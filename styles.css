@@ -67,6 +67,19 @@ input.invalid{border-color:var(--danger);background:#fff3f3}
   opacity:0;cursor:pointer;border:0;z-index:1}
 .datebox .dpick::-webkit-calendar-picker-indicator{position:absolute;inset:0;width:auto;height:auto;cursor:pointer}
 
+/* ---------- hakukenttä ---------- */
+.combo{position:relative;display:block}
+.combo-list{position:absolute;left:0;right:0;top:calc(100% + 2px);z-index:15;margin:0;padding:4px 0;list-style:none;
+  background:#fff;border:1px solid #c8c8c8;border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.18);
+  max-height:min(300px,45vh);overflow-y:auto;-webkit-overflow-scrolling:touch}
+.combo-list li{padding:8px 10px;cursor:pointer;display:flex;flex-direction:column;gap:1px;font-size:15px;color:var(--ink)}
+.combo-list li b{font-weight:normal;overflow-wrap:anywhere}
+.combo-list li span{font-size:12px;color:var(--muted)}
+.combo-list li.active,.combo-list li[data-k]:hover{background:var(--green-l)}
+.combo-list li.active b{font-weight:bold;color:var(--green-d)}
+.combo-list .combo-note,.combo-list .combo-empty{cursor:default;font-size:12.5px;color:var(--muted);padding:6px 10px}
+.combo-list .combo-note:hover,.combo-list .combo-empty:hover{background:none}
+
 /* ---------- painikkeet ---------- */
 .btn{border:1px solid var(--green);background:var(--green);color:#fff;padding:10px 14px;border-radius:8px;
   font-size:15px;font-weight:bold;cursor:pointer;font-family:inherit}

@@ -13,7 +13,8 @@ const DEFAULT_CFG = {
   mailSubject: 'Lasku {nro} / {laskuttaja}',
   mailBody:
     'Hei,\n\nOhessa lasku {nro}. Eräpäivä on {erapaiva} ja maksettava summa {summa}.\n' +
-    'Käytäthän maksaessasi viitenumeroa {viite}.\n\nYstävällisin terveisin\n{laskuttaja}',
+    'Käytäthän maksaessasi viitenumeroa {viite}.\n\n' +
+    'Virtuaaliviivakoodi: {virtuaaliviivakoodi}\n\nYstävällisin terveisin\n{laskuttaja}',
   vatRates: '25,5; 13,5; 10; 0',          // laskurivien ALV-valikko
   lastBiller: ''
 };
@@ -25,9 +26,10 @@ const CFG = {
     try {
       const saved = JSON.parse(localStorage.getItem(CFG_KEY) || '{}');
       // aiempi oletusviesti päivittyy uuteen, jos sitä ei ole muokattu
-      const OLD_BODY = 'Hei,\n\nohessa lasku {nro}. Eräpäivä on {erapaiva} ja maksettava summa {summa}.\n' +
-        'Käytäthän maksaessasi viitenumeroa {viite}.\n\nYstävällisin terveisin\n{laskuttaja}';
-      if (saved.mailBody === OLD_BODY) delete saved.mailBody;
+      const OLD_BODIES = ['ohessa', 'Ohessa'].map(o => 'Hei,\n\n' + o +
+        ' lasku {nro}. Eräpäivä on {erapaiva} ja maksettava summa {summa}.\n' +
+        'Käytäthän maksaessasi viitenumeroa {viite}.\n\nYstävällisin terveisin\n{laskuttaja}');
+      if (OLD_BODIES.includes(saved.mailBody)) delete saved.mailBody;
       Object.assign(this.data, DEFAULT_CFG, saved);
     } catch (e) { console.warn('Asetusten luku epäonnistui', e); }
     return this.data;

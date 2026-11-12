@@ -64,7 +64,8 @@
         <select id="laskuttaja"></select>
       </label>
       <label>Asiakas
-        <select id="asiakas"><option value="">– valitse asiakas –</option></select>
+        <input type="text" id="asiakasHaku" placeholder="Kirjoita nimi tai asiakasnumero" enterkeyhint="next">
+        <input type="hidden" id="asiakas" value="">
       </label>
     </div>
     <label>Sähköpostit <span class="hint">(ensimmäinen = vastaanottaja, muut kopioina; erotin ;)</span>
@@ -235,6 +236,7 @@
 <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
 <script src="config.js"></script>
 <script src="storage.js"></script>
+<script src="search.js"></script>
 <script src="invoice.js"></script>
 <script src="app.js"></script>
 </body>

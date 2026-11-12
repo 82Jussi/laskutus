@@ -12,6 +12,7 @@ ovat käytössä sekä tietokoneella että puhelimella.
 | `styles.css` | Ulkoasu (Ruiskutuskeli-värit) |
 | `config.js` | Asetukset (tallentuvat laitekohtaisesti selaimeen) |
 | `storage.js` | Kansio- ja tiedostokäsittely, jako |
+| `search.js` | Asiakas- ja tuotehaku |
 | `invoice.js` | Summat, viitenumero, pankkiviivakoodi ja PDF |
 | `app.js` | Ohjelman logiikka |
 | `manifest.json`, `icon-*.png`, `apple-touch-icon.png`, `favicon-32.png` | Kotinäytön kuvake |
@@ -52,6 +53,17 @@ Kentät ovat muodossa **pp.kk.vvvv** selaimen kieliasetuksista riippumatta. Kirj
 `5.12.2026`, `5.12.26` tai `051226` – ohjelma muotoilee arvon `05.12.2026`:ksi. Kalenterikuvakkeesta
 saa valitsimen. Eräpäivän muuttaminen päivittää maksuehdon ja päinvastoin.
 
+## Asiakas- ja tuotehaku
+
+Asiakas ja tuote haetaan kirjoittamalla. Haku löytää osan nimestä, asiakasnumeron / tuotekoodin,
+paikkakunnan tai Y-tunnuksen, ja useampi sana rajaa hakua (esim. `maija kauh`). ä ja a sekä ö ja o
+samaistetaan. Jos tarkkaa osumaa ei ole, lista näyttää lähimmät (kirjoitusvirheet).
+
+- **Enter** tai napautus valitsee, **↑ ↓** liikkuu listassa, **Esc** sulkee.
+- Asiakaskentästä poistuttaessa valitaan lähin osuma automaattisesti.
+- Tuotekentässä valinta täyttää yksikön, hinnan ja ALV:n ja siirtää kohdistuksen määrään.
+  Jos et valitse listasta, teksti jää vapaaksi laskuriviksi.
+
 ## ALV-kannat
 
 Laskurivien ALV valitaan alasvetovalikosta. Valikon kannat määritetään asetuksissa kohdassa
@@ -74,7 +86,7 @@ Tarkista ikkunan mitat käyttämästäsi kuoresta – ne vaihtelevat valmistajit
 - **Pankkiviivakoodi** (Code 128 C, versio 4) ja sen alla **virtuaaliviivakoodi** tulostuvat, kun ensimmäinen
   tilinumero on FI-alkuinen IBAN ja valuutta euro. Yli 999 999,99 € summa koodataan nollina
   Pankkiviivakoodi-oppaan mukaisesti. Viivakoodin voi poistaa asetuksista.
-- Sähköpostiviestiin voi lisätä virtuaaliviivakoodin muuttujalla `{virtuaaliviivakoodi}`.
+- Oletusviestissä on virtuaaliviivakoodi (`{virtuaaliviivakoodi}`). Jos koodia ei voi muodostaa (esim. ulkomainen tili), rivi jätetään viestistä pois.
 - *Teksti laskulle* on oletuksena tyhjä. Laskuttajarekisterin *Laskun vakioteksti* -kenttää ei käytetä automaattisesti.
 
 ## Tietoturva

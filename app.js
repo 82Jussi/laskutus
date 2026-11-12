@@ -305,12 +305,12 @@ function fillRegistry() {
   bs.value = String(lastIdx >= 0 ? lastIdx : 0);
   $('billerWrap').hidden = REG.billers.length <= 1;
 
-  // asiakkaat
-  const cs = $('asiakas');
-  const prev = cs.value;
-  cs.innerHTML = '<option value="">– valitse asiakas –</option>' + REG.customers.map((c, i) =>
-    `<option value="${i}">${c.id ? esc(c.id) + ' · ' : ''}${esc(c.name)}</option>`).join('');
-  if (prev && REG.customers[prev]) cs.value = prev;
+  // asiakkaat: valinta säilyy, jos asiakas löytyy päivitetystä rekisteristä
+  const prev = $('asiakasHaku').dataset.key || '';
+  const idx = prev ? REG.customers.findIndex(c => custKey(c) === prev) : -1;
+  if (idx >= 0) selectCustomer(idx, false); else clearCustomer();
+  $('asiakasHaku').placeholder = REG.customers.length
+    ? `Kirjoita nimi tai asiakasnumero (${REG.customers.length} asiakasta)` : 'Lataa ensin rekisteri';
 
   // yhteenveto
   const has = REG.customers.length || REG.products.length || REG.billers.length;
@@ -340,8 +340,47 @@ async function applyBiller() {
 
 function currentCustomer() {
   const v = $('asiakas').value;
-  return v === '' ? null : REG.customers[Number(v)];
+  return v === '' ? null : REG.customers[Number(v)] || null;
 }
+
+/* ---------- asiakashaku ---------- */
+const custKey = (c) => (c.id || '') + '|' + c.name;
+function custEntries() {
+  return REG.customers.map((c, i) => ({
+    index: i, code: c.id, name: c.name,
+    extra: [c.city, c.bid, c.recipient, c.addr].filter(Boolean).join(' ')
+  }));
+}
+function selectCustomer(i, notify = true) {
+  const c = REG.customers[i];
+  $('asiakas').value = String(i);
+  $('asiakasHaku').value = c.name;
+  $('asiakasHaku').dataset.key = custKey(c);
+  $('asiakasHaku').classList.remove('invalid');
+  if (notify) onCustomerChange();
+}
+function clearCustomer() {
+  $('asiakas').value = '';
+  $('asiakasHaku').value = '';
+  $('asiakasHaku').dataset.key = '';
+  onCustomerChange();
+}
+SEARCH.attach($('asiakasHaku'), {
+  entries: custEntries,
+  render: (e) => {
+    const c = REG.customers[e.index];
+    return { title: c.name, sub: [c.id && 'nro ' + c.id, c.city, c.bid].filter(Boolean).join(' · ') };
+  },
+  onPick: (e) => { selectCustomer(e.index); },
+  onType: () => { $('asiakas').value = ''; $('asiakasHaku').dataset.key = ''; },
+  onNoMatch: () => {
+    $('asiakasHaku').classList.add('invalid');
+    status('Asiakasta ei löytynyt rekisteristä.', 'err');
+  },
+  isPicked: () => $('asiakas').value !== '',
+  pickOnBlur: true, showAllOnFocus: true, selectOnFocus: true,
+  emptyText: 'Ei osumia asiakasrekisterissä'
+});
 
 function onCustomerChange() {
   const c = currentCustomer();
@@ -376,18 +415,29 @@ function addRow(data = {}) {
   renderRows();
 }
 
+/* ---------- tuotehaku ---------- */
+function prodEntries() {
+  return REG.products.map((p, i) => ({ index: i, code: p.code, name: p.name, extra: p.unit }));
+}
+function pickProduct(i, pi) {
+  const p = REG.products[pi];
+  Object.assign(ROWS[i], {
+    product: pi, desc: p.name, unit: p.unit || 'kpl', price: p.price,
+    vat: p.vat === null ? defaultVat() : p.vat
+  });
+  renderRows();
+  const q = $('rivit').querySelector(`[data-f="qty"][data-i="${i}"]`);
+  if (q) { q.focus(); try { q.select(); } catch (_) {} }
+}
+
 function renderRows() {
   const wrap = $('rivit');
-  const prodOpts = REG.products.map((p, j) =>
-    `<option value="${j}">${p.code ? esc(p.code) + ' · ' : ''}${esc(p.name)}</option>`).join('');
+  const ph = REG.products.length ? 'Hae tuote tai kirjoita vapaa rivi' : 'Tuote / kuvaus laskulle';
   wrap.innerHTML = ROWS.map((r, i) => `
     <div class="lrow" data-i="${i}">
       <div class="lrow-top">
         <div class="lcol">
-          <select class="psel" data-i="${i}" aria-label="Tuote rekisteristä">
-            <option value="">– valitse tuote tai kirjoita vapaa rivi –</option>${prodOpts}
-          </select>
-          <input data-f="desc" data-i="${i}" value="${esc(r.desc)}" placeholder="Tuote / kuvaus laskulle">
+          <input data-f="desc" data-i="${i}" value="${esc(r.desc)}" placeholder="${ph}" enterkeyhint="next" aria-label="Tuote">
         </div>
         <button type="button" class="del" data-del="${i}" aria-label="Poista rivi" title="Poista rivi">×</button>
       </div>
@@ -399,10 +449,24 @@ function renderRows() {
         <div class="ltot" data-tot="${i}">${INV.money(INV.lineTotal(r))}</div>
       </div>
     </div>`).join('');
-  ROWS.forEach((r, i) => {
-    const sel = wrap.querySelector(`select.psel[data-i="${i}"]`);
-    if (sel && r.product !== '' && REG.products[r.product]) sel.value = r.product;
-  });
+  if (REG.products.length) {
+    wrap.querySelectorAll('input[data-f="desc"]').forEach(inp => {
+      const i = Number(inp.dataset.i);
+      SEARCH.attach(inp, {
+        entries: prodEntries,
+        render: (e) => {
+          const p = REG.products[e.index];
+          return {
+            title: p.name,
+            sub: [p.code, INV.money(p.price) + (p.unit ? ' / ' + p.unit : ''),
+              p.vat === null ? '' : 'ALV ' + fmtVat(p.vat)].filter(Boolean).join(' · ')
+          };
+        },
+        onPick: (e) => pickProduct(i, e.index),
+        onType: () => { ROWS[i].product = ''; }
+      });
+    });
+  }
   calc();
 }
 
@@ -415,19 +479,6 @@ $('rivit').addEventListener('input', (e) => {
   calc();
 });
 
-$('rivit').addEventListener('change', (e) => {
-  if (!e.target.classList.contains('psel')) return;
-  const i = Number(e.target.dataset.i), v = e.target.value;
-  ROWS[i].product = v;
-  if (v !== '') {
-    const p = REG.products[Number(v)];
-    Object.assign(ROWS[i], {
-      desc: p.name, unit: p.unit || 'kpl', price: p.price,
-      vat: p.vat === null ? defaultVat() : p.vat
-    });
-  }
-  renderRows();
-});
 
 $('rivit').addEventListener('click', (e) => {
   const d = e.target.dataset.del;
@@ -493,7 +544,7 @@ function validate(inv) {
     if (normalizeD(id) === null) return 'Tarkista päivämäärä (muoto pp.kk.vvvv).';
   }
   if (!REG.billers.length) return 'Lataa ensin rekisteri (Laskuttajarekisteri puuttuu).';
-  if (!inv.customer.name) return 'Valitse asiakas.';
+  if (!inv.customer.name) return 'Valitse asiakas – kirjoita nimi ja valitse listasta.';
   if (!inv.lines.length) return 'Lisää vähintään yksi laskurivi.';
   if (!inv.number) return 'Laskunumero puuttuu.';
   if (!inv.due) return 'Eräpäivä puuttuu.';
@@ -519,7 +570,10 @@ function outFolderFor(inv) {
 function mailTexts(inv) {
   const t = INV.totals(inv.lines);
   const vcode = INV.virtualBarcode(inv.sender.iban, t.gross, inv.reference, inv.due, inv.sender.currency);
-  const rep = (s) => String(s || '')
+  // jos virtuaaliviivakoodia ei voi muodostaa (esim. ulkomainen tili), sen rivi jätetään pois
+  const strip = (s) => vcode ? String(s || '') : String(s || '')
+    .split('\n').filter(l => !l.includes('{virtuaaliviivakoodi}')).join('\n').replace(/\n{3,}/g, '\n\n');
+  const rep = (s) => strip(s)
     .replace(/\{nro\}/g, inv.number)
     .replace(/\{laskuttaja\}/g, inv.sender.name || '')
     .replace(/\{asiakas\}/g, inv.customer.name || '')
@@ -690,8 +744,7 @@ $('btnOpenPdf').onclick = () => { if (LAST) openBlob(LAST.blob); };
 $('btnNew').onclick = async () => {
   LAST = null;
   $('doneCard').hidden = true;
-  $('asiakas').value = '';
-  onCustomerChange();
+  clearCustomer();
   setD('toimituspvm', '');
   setD('laskupvm', INV.today());
   $('vapaateksti').value = '';
@@ -957,8 +1010,11 @@ function showView(id) {
 }
 document.querySelectorAll('.tab').forEach(t => { t.onclick = () => showView(t.dataset.view); });
 
-$('btnAddRow').onclick = () => addRow();
-$('asiakas').onchange = onCustomerChange;
+$('btnAddRow').onclick = () => {
+  addRow();
+  const ins = $('rivit').querySelectorAll('input[data-f="desc"]');
+  if (ins.length) ins[ins.length - 1].focus();
+};
 $('laskuttaja').onchange = () => { ROWS.forEach(r => { if (r.product === '') r.vat = defaultVat(); }); renderRows(); applyBiller(); };
 $('maksuehto').oninput = updateDue;
 $('laskunro').oninput = updateRef;
