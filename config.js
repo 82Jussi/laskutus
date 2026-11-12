@@ -12,8 +12,9 @@ const DEFAULT_CFG = {
   barcode: true,                           // pankkiviivakoodi + virtuaaliviivakoodi
   mailSubject: 'Lasku {nro} / {laskuttaja}',
   mailBody:
-    'Hei,\n\nohessa lasku {nro}. Eräpäivä on {erapaiva} ja maksettava summa {summa}.\n' +
+    'Hei,\n\nOhessa lasku {nro}. Eräpäivä on {erapaiva} ja maksettava summa {summa}.\n' +
     'Käytäthän maksaessasi viitenumeroa {viite}.\n\nYstävällisin terveisin\n{laskuttaja}',
+  vatRates: '25,5; 13,5; 10; 0',          // laskurivien ALV-valikko
   lastBiller: ''
 };
 
@@ -23,6 +24,10 @@ const CFG = {
   load() {
     try {
       const saved = JSON.parse(localStorage.getItem(CFG_KEY) || '{}');
+      // aiempi oletusviesti päivittyy uuteen, jos sitä ei ole muokattu
+      const OLD_BODY = 'Hei,\n\nohessa lasku {nro}. Eräpäivä on {erapaiva} ja maksettava summa {summa}.\n' +
+        'Käytäthän maksaessasi viitenumeroa {viite}.\n\nYstävällisin terveisin\n{laskuttaja}';
+      if (saved.mailBody === OLD_BODY) delete saved.mailBody;
       Object.assign(this.data, DEFAULT_CFG, saved);
     } catch (e) { console.warn('Asetusten luku epäonnistui', e); }
     return this.data;
@@ -36,5 +41,15 @@ const CFG = {
     this.save();
   }
 };
+
+/* ALV-valikon kannat numeroina, esim. [25.5, 13.5, 10, 0] */
+function vatList() {
+  const out = [];
+  String(CFG.data.vatRates || '').split(/[;\s]+/).forEach(x => {
+    const v = Number(String(x).replace('%', '').replace(',', '.'));
+    if (x !== '' && Number.isFinite(v) && v >= 0 && v <= 100 && !out.includes(v)) out.push(v);
+  });
+  return out.length ? out : [25.5, 13.5, 10, 0];
+}
 
 CFG.load();

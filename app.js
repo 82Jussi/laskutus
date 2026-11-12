@@ -360,7 +360,16 @@ function onCustomerChange() {
 /* ===================================================================== */
 /* Laskurivit                                                            */
 /* ===================================================================== */
-function defaultVat() { const b = currentBiller(); return b ? b.vat : 25.5; }
+function defaultVat() {
+  const b = currentBiller(), list = vatList();
+  return b && list.includes(b.vat) ? b.vat : list[0];
+}
+const fmtVat = (v) => String(v).replace('.', ',') + ' %';
+function vatOptions(cur) {
+  const list = vatList().slice();
+  if (cur !== '' && cur !== null && cur !== undefined && !list.includes(Number(cur))) list.push(Number(cur));
+  return list.map(v => `<option value="${v}"${Number(cur) === v ? ' selected' : ''}>${fmtVat(v)}</option>`).join('');
+}
 
 function addRow(data = {}) {
   ROWS.push({ product: '', desc: '', qty: 1, unit: 'kpl', price: 0, vat: defaultVat(), ...data });
@@ -386,7 +395,7 @@ function renderRows() {
         <label>Määrä<input type="number" step="any" inputmode="decimal" data-f="qty" data-i="${i}" value="${r.qty}"></label>
         <label>Yks.<input data-f="unit" data-i="${i}" value="${esc(r.unit)}"></label>
         <label>Hinta, alv 0%<input type="number" step="any" inputmode="decimal" data-f="price" data-i="${i}" value="${r.price}"></label>
-        <label>ALV %<input type="number" step="any" inputmode="decimal" data-f="vat" data-i="${i}" value="${r.vat}"></label>
+        <label>ALV<select data-f="vat" data-i="${i}">${vatOptions(r.vat)}</select></label>
         <div class="ltot" data-tot="${i}">${INV.money(INV.lineTotal(r))}</div>
       </div>
     </div>`).join('');
@@ -865,7 +874,7 @@ function renderLocalArchive() {
 const SET_MAP = {
   cfgRegFile: 'regFile', cfgOutFolder: 'outFolder', cfgYearFolders: 'yearFolders',
   cfgFilePattern: 'filePattern', cfgMailSubject: 'mailSubject', cfgMailBody: 'mailBody',
-  cfgPdfColor: 'pdfColor', cfgBarcode: 'barcode'
+  cfgPdfColor: 'pdfColor', cfgBarcode: 'barcode', cfgVatRates: 'vatRates'
 };
 
 function syncStyleUi() {
@@ -898,6 +907,7 @@ function readSettings() {
   cfg.pdfStyle = $('cfgStyleColor').checked ? 'color' : 'bw';
   cfg.outFolder = (cfg.outFolder || 'Laskut').replace(/^\/+|\/+$/g, '');
   if (!cfg.filePattern.includes('{nro}')) cfg.filePattern = 'Lasku_{nro}_' + cfg.filePattern;
+  cfg.vatRates = vatList().map(v => String(v).replace('.', ',')).join('; ');
   CFG.save();
 }
 
@@ -909,6 +919,7 @@ $('btnSaveCfg').onclick = async () => {
   const oldReg = cfg.regFile;
   readSettings();
   $('settingsDialog').close();
+  renderRows();
   status('Asetukset tallennettu.', 'ok');
   if (ST.mode === 'folder' && READY) {
     if (oldReg !== cfg.regFile) { await listRegistryFiles(); await loadRegistryFromFolder(); }

@@ -222,8 +222,8 @@ const INV = {
     payFields.push(['Viitenumero', inv.reference, { single: true }]);
     payFields.push(['Eräpäivä', this.dateFi(inv.due), { single: true }]);
     accounts.forEach((a, i) => {
-      payFields.push([`Tilinumero${accounts.length > 1 ? ' ' + (i + 1) : ''}${a[2] ? ' – ' + a[2] : ''}`, a[0], { single: true }]);
-      payFields.push([`BIC${accounts.length > 1 ? ' ' + (i + 1) : ''}`, a[1], { single: true }]);
+      payFields.push([`Tilinumero${a[2] ? ' – ' + a[2] : ''}`, a[0], { single: true }]);
+      payFields.push(['BIC', a[1], { single: true }]);
       if (i === 0) payFields.push(['Maksettava', this.money(t.gross, cur), { single: true, bold: true, size: 11 }]);
     });
     if (!accounts.length) payFields.push(['Maksettava', this.money(t.gross, cur), { single: true, bold: true, size: 11 }]);
@@ -233,7 +233,7 @@ const INV = {
       this.virtualBarcode(s.iban, t.gross, inv.reference, inv.due, cur);
     const BAR_H = 14, MOD = 0.32;          // viivakoodi: korkeus ≥ 13 mm, moduuli 0,32 mm (~106 mm)
     const payGridH = grid(payList, L, 0, 3, PAY_COLW, false);
-    const payH = 9 + payGridH + (vcode ? 1 + 11 + BAR_H : -2.2);
+    const payH = 9 + payGridH + (vcode ? 2 + BAR_H + 5.2 : -2.2);
     const PAY_TOP = FOOT_Y - 4 - payH;
     const CONTENT_MAX_LAST = PAY_TOP - 5;  // viimeisen sivun sisältö loppuu tähän
     const CONTENT_MAX = FOOT_Y - 8;        // muut sivut
@@ -255,20 +255,44 @@ const INV = {
     line(inv.number, R, 24, 60, 11, 'normal', T.ink, 'right');
     doc.setDrawColor(...T.accent); doc.setLineWidth(0.7); doc.line(L, 30, R, 30); doc.setLineWidth(0.2);
 
-    /* ===== osoitteet ===== */
-    y = 38;
+    /* ===== osoitteet =====
+     * Vastaanottaja vasemmalla C5-ikkunakirjekuoren ikkunan kohdalla (A4 taitettuna kerran):
+     * pieni ikkuna 35×95 mm (40 mm ylhäältä, 18 mm vasemmalta) ja iso ikkuna 60×90 mm
+     * (15 mm ylhäältä, 18 mm vasemmalta). Osoitealue paperilla x 22–88 mm, y 42–62 mm,
+     * eikä sille tulosteta muuta tekstiä. Laskuttajan tiedot oikealla. */
     const foreign = (cn) => has(cn) && !/^(suomi|finland|fi)$/i.test(cn.trim());
     const sLines = [s.name, s.addr, [s.zip, s.city].filter(has).join(' '), foreign(s.country) ? s.country : ''].filter(has);
     const cLines = [c.name, c.recipient, c.addr, [c.zip, c.city].filter(has).join(' '), foreign(c.country) ? c.country : ''].filter(has);
-    line('LASKUTTAJA', L, y, 80, LBL, 'bold', T.grey);
-    line('VASTAANOTTAJA', 110, y, 80, LBL, 'bold', T.grey);
-    let sy = y + 5, cy = y + 5;
-    sLines.forEach(l => wrap(l, 86, 10).forEach(x => { font(10, 'normal'); doc.text(x, L, sy); sy += 4.6; }));
-    cLines.forEach((l, i) => wrap(l, 84, 10, i === 0 ? 'bold' : 'normal')
-      .forEach(x => { font(10, i === 0 ? 'bold' : 'normal'); doc.text(x, 110, cy); cy += 4.6; }));
+    const AX = 22, AW = 66, AMAX = 61.5;                // ikkunan osoitealue
+    let asz = 10, aLines, AY = 45;
+    const fits = () => AY + (aLines.length - 1) * asz * PT * 1.3 <= AMAX;
+    const cut = (str, w) => { let x = str; while (tw(x) > w && x.length > 1) x = x.slice(0, -2) + '…'; return x; };
+    // 1) rivitys + fontin pienennys (min 6,5 pt)
+    for (;;) {
+      aLines = [];
+      cLines.forEach((l, i) => wrap(l, AW, asz, i === 0 ? 'bold' : 'normal').forEach(x => aLines.push([x, i === 0])));
+      AY = aLines.length > 5 ? 43.5 : 45;
+      if (fits() || asz <= 6.5) break;
+      asz -= 0.25;
+    }
+    // 2) ei mahdu: yksi rivi per osoitetieto, pitkät rivit lyhennetään
+    if (!fits()) {
+      for (asz = 10; ; asz -= 0.25) {
+        aLines = cLines.map((l, i) => { font(asz, i === 0 ? 'bold' : 'normal'); return [cut(l, AW), i === 0]; });
+        AY = aLines.length > 5 ? 43.5 : 45;
+        if (fits() || asz <= 6.5) break;
+      }
+    }
+    const alh = asz * PT * 1.3;
+    aLines.forEach(([x, b], k) => { font(asz, b ? 'bold' : 'normal'); doc.text(x, AX, AY + k * alh); });
+    const cy = AY + aLines.length * alh;
+
+    line('LASKUTTAJA', 118, 38, 76, LBL, 'bold', T.grey);
+    let sy = 43;
+    sLines.forEach(l => wrap(l, R - 118, 10).forEach(x => { font(10, 'normal'); doc.text(x, 118, sy); sy += 4.6; }));
 
     /* ===== laskun perustiedot ===== */
-    y = Math.max(sy, cy) + 4;
+    y = Math.max(sy, cy, 66) + 4;
     const meta = pick([
       ['Laskun päivä', this.dateFi(inv.date), { single: true }],
       ['Eräpäivä', this.dateFi(inv.due), { single: true }],
@@ -355,15 +379,16 @@ const INV = {
     grid(payList, L, py, 3, PAY_COLW, true);
     py += payGridH;
     if (vcode) {
-      py += 1;
-      line('VIRTUAALIVIIVAKOODI', L, py, 80, LBL, 'bold', T.grey);
-      line(vcode, L, py + 4.4, W, 9, 'normal', [0, 0, 0]);
-      py += 8 + 3;
-      // viivakoodi: aina musta valkoisella, hiljainen alue ≥ 20 mm molemmin puolin
+      py += 2;
+      // viivakoodi: aina musta valkoisella; virtuaaliviivakoodi selkotekstinä viivakoodin alla
       const bars = this.code128C(vcode);
-      let bx = L + 4;
+      const bx0 = L + 4;
+      let bx = bx0;
       doc.setFillColor(0, 0, 0);
       bars.forEach((wd, i) => { if (i % 2 === 0) doc.rect(bx, py, wd * MOD, BAR_H, 'F'); bx += wd * MOD; });
+      font(8.5, 'normal', [0, 0, 0]);
+      const vw = tw(vcode), cx = (bx0 + bx) / 2;
+      line(vcode, Math.max(L, cx - vw / 2), py + BAR_H + 3.8, W, 8.5, 'normal', [0, 0, 0]);
     }
 
     /* ===== alatunniste kaikille sivuille ===== */

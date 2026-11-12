@@ -176,6 +176,12 @@
     <input type="color" id="cfgPdfColor" class="colorpick" aria-label="Korostusväri"></label>
   <label class="chk"><input type="checkbox" id="cfgBarcode"> Pankkiviivakoodi ja virtuaaliviivakoodi</label>
 
+  <div class="set-title">Laskurivit</div>
+  <label>ALV-kannat (%) <span class="hint">erotin ; – esim. 25,5; 13,5; 10; 0</span>
+    <input type="text" id="cfgVatRates" inputmode="decimal">
+  </label>
+  <p class="small muted">Kannat näkyvät laskurivien ALV-valikossa. Jos tuotteen tai laskuttajan oletus-ALV puuttuu listasta, se lisätään kyseisen rivin valikkoon.</p>
+
   <div class="set-title">Tallennus</div>
   <label>Rekisteritiedoston nimi
     <input type="text" id="cfgRegFile">

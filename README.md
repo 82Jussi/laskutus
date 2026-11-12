@@ -52,12 +52,26 @@ Kentät ovat muodossa **pp.kk.vvvv** selaimen kieliasetuksista riippumatta. Kirj
 `5.12.2026`, `5.12.26` tai `051226` – ohjelma muotoilee arvon `05.12.2026`:ksi. Kalenterikuvakkeesta
 saa valitsimen. Eräpäivän muuttaminen päivittää maksuehdon ja päinvastoin.
 
+## ALV-kannat
+
+Laskurivien ALV valitaan alasvetovalikosta. Valikon kannat määritetään asetuksissa kohdassa
+**Laskurivit → ALV-kannat** (oletus `25,5; 13,5; 10; 0`). Jos tuotteen ALV rekisterissä tai
+laskuttajan oletus-ALV puuttuu listasta, se lisätään kyseisen rivin valikkoon, jotta arvo ei muutu huomaamatta.
+
+## Ikkunakirjekuori (C5)
+
+Vastaanottajan osoite on vasemmalla alueella x 22–88 mm, y 42–62 mm. Kun A4 taitetaan kerran
+puoliksi ja laitetaan C5-ikkunakuoreen (162 × 229 mm), osoite näkyy sekä pienestä ikkunasta
+(35 × 95 mm, 40 mm ylhäältä, 18 mm vasemmalta) että isosta ikkunasta (60 × 90 mm, 15 mm ylhäältä,
+18 mm vasemmalta). Pitkä osoite rivitetään ja tarvittaessa fonttia pienennetään, jotta se pysyy alueella.
+Tarkista ikkunan mitat käyttämästäsi kuoresta – ne vaihtelevat valmistajittain.
+
 ## Lasku (PDF)
 
 - Asetuksissa: **Mustavalkoinen** (oletus) tai **Korostusväri** omalla värillä.
 - Puuttuvat tiedot (esim. verkkolaskuosoite, toimituspäivä, toinen tili) jätetään kokonaan pois.
 - Pitkät tekstit rivitetään tai fonttia pienennetään, joten tekstit eivät mene päällekkäin.
-- **Pankkiviivakoodi** (Code 128 C, versio 4) ja **virtuaaliviivakoodi** tulostuvat, kun ensimmäinen
+- **Pankkiviivakoodi** (Code 128 C, versio 4) ja sen alla **virtuaaliviivakoodi** tulostuvat, kun ensimmäinen
   tilinumero on FI-alkuinen IBAN ja valuutta euro. Yli 999 999,99 € summa koodataan nollina
   Pankkiviivakoodi-oppaan mukaisesti. Viivakoodin voi poistaa asetuksista.
 - Sähköpostiviestiin voi lisätä virtuaaliviivakoodin muuttujalla `{virtuaaliviivakoodi}`.

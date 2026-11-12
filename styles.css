@@ -89,7 +89,8 @@ input.invalid{border-color:var(--danger);background:#fff3f3}
 .lrow-top select,.lrow-top input{margin:0}
 .lrow-nums{display:grid;grid-template-columns:1fr .8fr 1.2fr .8fr 1.2fr;gap:6px;margin-top:6px;align-items:end}
 .lrow-nums label{margin:0;font-size:11.5px;color:var(--muted)}
-.lrow-nums input{padding:7px}
+.lrow-nums input,.lrow-nums select{padding:7px}
+.lrow-nums select{padding:7px 2px 7px 5px}
 .ltot{text-align:right;font-weight:bold;font-size:15px;padding-bottom:8px}
 .del{background:none;border:0;color:var(--danger);font-size:22px;cursor:pointer;padding:2px 6px;line-height:1}
 
@@ -146,6 +147,6 @@ dialog.preview iframe{flex:1;border:0;width:100%}
 @media (max-width:640px){
   .grid2,.grid3{grid-template-columns:1fr}
   .grid3{grid-template-columns:1fr 1fr}
-  .lrow-nums{grid-template-columns:1fr .75fr 1.25fr .8fr}
+  .lrow-nums{grid-template-columns:.9fr .7fr 1.15fr 1.05fr}
   .ltot{grid-column:1/-1;padding-bottom:0}
 }
