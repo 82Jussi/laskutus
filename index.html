@@ -1,50 +1,76 @@
 <!DOCTYPE html>
 <html lang="fi">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#0f766e">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Laskutus</title>
 <link rel="manifest" href="manifest.json">
-<link rel="icon" href="favicon-32.png" sizes="32x32">
-<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="theme-color" content="#2e7d32">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Laskutus">
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
 
 <header class="topbar">
   <div class="brand">
-    <span class="logo">€</span>
+    <img src="icon-192.png" alt="" class="brand-icon">
     <div>
-      <h1>Laskutus</h1>
-      <div class="sub" id="connState">Ei yhteyttä OneDriveen</div>
+      <div class="brand-title">Laskutus</div>
+      <div class="brand-sub" id="headState">Rekisteriä ei ole ladattu</div>
     </div>
   </div>
-  <button class="icon-btn" id="btnSettings" title="Asetukset" aria-label="Asetukset">&#9881;</button>
+  <button type="button" class="icon-btn" id="btnSettings" aria-label="Asetukset" title="Asetukset">⚙️</button>
 </header>
 
-<nav class="tabs">
-  <button class="tab active" data-view="laskuView">Lasku</button>
-  <button class="tab" data-view="rekisteriView">Rekisterit</button>
-  <button class="tab" data-view="arkistoView">Arkisto</button>
+<nav class="tabs" role="tablist">
+  <button type="button" class="tab active" data-view="laskuView">Lasku</button>
+  <button type="button" class="tab" data-view="rekisteriView">Rekisteri</button>
+  <button type="button" class="tab" data-view="arkistoView">Arkisto</button>
 </nav>
 
 <main>
 
-<!-- ============ LASKU ============ -->
+<!-- ======================= LASKU ======================= -->
 <section id="laskuView" class="view active">
 
+  <!-- käyttöönotto / uudelleenyhdistys -->
+  <div class="card setup" id="setupCard" hidden>
+    <div id="setupText"></div>
+    <div class="row-btns" id="setupBtns"></div>
+  </div>
+
+  <!-- valmis lasku -->
+  <div class="card done" id="doneCard" hidden>
+    <div class="done-title" id="doneTitle"></div>
+    <div class="small" id="doneText"></div>
+    <div class="row-btns">
+      <button type="button" class="btn" id="btnShare">Jaa PDF</button>
+      <button type="button" class="btn ghost" id="btnMail">Avaa sähköposti</button>
+      <button type="button" class="btn ghost" id="btnCopyAddr">Kopioi osoitteet</button>
+      <button type="button" class="btn ghost" id="btnOpenPdf">Avaa PDF</button>
+      <button type="button" class="btn ghost" id="btnNew">Uusi lasku</button>
+    </div>
+  </div>
+
   <div class="card">
-    <div class="card-h">Vastaanottaja</div>
+    <div class="card-h">Laskuttaja ja asiakas</div>
     <div class="grid2">
+      <label id="billerWrap">Laskuttaja
+        <select id="laskuttaja"></select>
+      </label>
       <label>Asiakas
         <select id="asiakas"><option value="">– valitse asiakas –</option></select>
       </label>
-      <label>Laskun sähköpostit (pilkulla eroteltu)
-        <input type="text" id="emails" placeholder="nimi@yritys.fi">
-      </label>
     </div>
-    <div class="muted small" id="asiakasTiedot">Lataa rekisteri Rekisterit-välilehdeltä.</div>
+    <label>Sähköpostit <span class="hint">(ensimmäinen = vastaanottaja, muut kopioina; erotin ;)</span>
+      <input type="text" id="emails" inputmode="email" placeholder="laskut@asiakas.fi; tilaaja@asiakas.fi">
+    </label>
+    <div class="muted small" id="asiakasTiedot"></div>
   </div>
 
   <div class="card">
@@ -52,26 +78,20 @@
     <div class="grid3">
       <label>Laskunumero<input type="text" id="laskunro"></label>
       <label>Laskun päivä<input type="date" id="laskupvm"></label>
-      <label>Maksuehto (pv)<input type="number" id="maksuehto" value="14" min="0"></label>
+      <label>Maksuehto (pv)<input type="number" id="maksuehto" min="0" inputmode="numeric"></label>
       <label>Eräpäivä<input type="date" id="erapvm"></label>
       <label>Viitenumero<input type="text" id="viite" readonly></label>
       <label>Toimituspäivä<input type="date" id="toimituspvm"></label>
     </div>
-    <label>Vapaa teksti laskulle
-      <textarea id="vapaateksti" rows="2" placeholder="Esim. Kiitos tilauksestanne."></textarea>
+    <div class="muted small" id="numberHint"></div>
+    <label>Teksti laskulle
+      <textarea id="vapaateksti" rows="2"></textarea>
     </label>
   </div>
 
   <div class="card">
-    <div class="card-h">Laskurivit <button class="mini" id="btnAddRow">+ Lisää rivi</button></div>
-    <div class="rows-wrap">
-      <table class="rows" id="rivit">
-        <thead>
-          <tr><th class="w-desc">Tuote / kuvaus</th><th>Määrä</th><th>Yks.</th><th>à-hinta</th><th>ALV%</th><th class="num">Yhteensä</th><th></th></tr>
-        </thead>
-        <tbody></tbody>
-      </table>
-    </div>
+    <div class="card-h">Laskurivit <button type="button" class="mini" id="btnAddRow">+ Lisää rivi</button></div>
+    <div id="rivit"></div>
     <div class="totals">
       <div><span>Veroton yhteensä</span><b id="tNetto">0,00 €</b></div>
       <div><span>ALV</span><b id="tAlv">0,00 €</b></div>
@@ -80,168 +100,121 @@
   </div>
 
   <div class="card actions">
-    <button class="btn ghost" id="btnPreview">Esikatsele PDF</button>
-    <button class="btn ghost" id="btnDownload">Lataa PDF</button>
-    <button class="btn" id="btnSave">Tallenna OneDriveen</button>
-    <button class="btn primary" id="btnSend">Tallenna ja lähetä sähköpostilla</button>
+    <button type="button" class="btn ghost" id="btnPreview">Esikatsele</button>
+    <button type="button" class="btn primary" id="btnSave">Tallenna lasku</button>
   </div>
-
-  <div id="status" class="status"></div>
+  <div id="status" class="status" aria-live="polite"></div>
 </section>
 
-<!-- ============ REKISTERIT ============ -->
+<!-- ======================= REKISTERI ======================= -->
 <section id="rekisteriView" class="view">
   <div class="card">
-    <div class="card-h">OneDrive-rekisteri</div>
-    <div class="grid2">
-      <label>Rekisterikansio OneDrivessa
-        <input type="text" id="regFolder" placeholder="Dokumentit/Laskutus">
-      </label>
+    <div class="card-h">Rekisteri OneDrivessa</div>
+
+    <div id="folderMode" hidden>
+      <p class="small">Valitse tietokoneen OneDrive-kansiosta <b>Laskutus</b>-kansio. Ohjelma lukee rekisterin ja tallentaa laskut suoraan sinne, ja OneDrive synkronoi ne puhelimeen.</p>
+      <div class="kv"><span>Kansio</span><b id="folderName">–</b></div>
       <label>Rekisteritiedosto
-        <select id="regFile"><option value="">– hae kansion tiedostot –</option></select>
+        <select id="regFile"><option value="">– valitse kansio ensin –</option></select>
       </label>
+      <div class="row-btns">
+        <button type="button" class="btn" id="btnPickFolder">Valitse kansio</button>
+        <button type="button" class="btn ghost" id="btnReloadReg">Lataa rekisteri uudelleen</button>
+      </div>
     </div>
-    <div class="row-btns">
-      <button class="btn ghost" id="btnListFiles">Hae kansion Excel-tiedostot</button>
-      <button class="btn" id="btnLoadReg">Lataa rekisteri</button>
-      <label class="btn ghost file-btn">Lataa paikallinen Excel<input type="file" id="localXlsx" accept=".xlsx,.xlsm" hidden></label>
+
+    <div id="fileMode" hidden>
+      <p class="small">Valitse rekisteri-Excel. Valitsimessa OneDrive näkyy sijaintina (Android: valikko ☰ → OneDrive, iPhone: Tiedostot → OneDrive). Rekisteri muistetaan tällä laitteella, kunnes päivität sen.</p>
+      <div class="kv"><span>Tiedosto</span><b id="fileName">–</b></div>
+      <div class="row-btns">
+        <label class="btn file-btn">Valitse rekisteri-Excel<input type="file" id="regInput" accept=".xlsx,.xlsm,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden></label>
+      </div>
     </div>
-    <div class="muted small">Paikallinen lataus on tarkoitettu testaamiseen ilman OneDrive-yhteyttä.</div>
   </div>
 
   <div class="card">
-    <div class="card-h">Rekisterin sisältö</div>
-    <div class="reg-summary" id="regSummary">Rekisteriä ei ole ladattu.</div>
-    <details><summary>Odotettu Excel-rakenne</summary>
+    <div class="card-h">Sisältö</div>
+    <div id="regSummary" class="small">Rekisteriä ei ole ladattu.</div>
+    <details>
+      <summary>Rekisterin rakenne</summary>
       <div class="small muted struct">
-        <p><b>Asiakkaat</b>: Asiakasnumero, Nimi, Y-tunnus, Osoite, Postinumero, Postitoimipaikka, Maa, Sähköposti, Maksuehto, Verkkolaskuosoite, Välittäjä</p>
-        <p><b>Vastaanottajat</b>: Asiakasnumero, Nimi, Sähköposti, Rooli (useita rivejä per asiakas)</p>
-        <p><b>Tuotteet</b>: Koodi, Nimi, Kuvaus, Yksikkö, Hinta, ALV</p>
-        <p><b>Lähettäjä</b>: Kenttä / Arvo -parit (Nimi, Y-tunnus, Osoite, Postinumero, Postitoimipaikka, Sähköposti, Puhelin, IBAN, BIC, Pankki, Maksuehto, Viivästyskorko, Laskunumero)</p>
+        <p><b>Asiakasrekisteri</b>: Asiakasnumero, Nimi, Osoite, Postinumero, Postitoimipaikka, Maa, Y-tunnus, Sähköposti, Maksuehto, Laskutusvastaanottaja, Laskutussähköposti, Verkkolaskuosoite, Välittäjä</p>
+        <p><b>Tuoterekisteri</b>: Tuotekoodi, Tuote, Yksikkö, Hinta, alv 0%, ALV</p>
+        <p><b>Laskuttajarekisteri</b>: kentät riveillä (sarake A), jokainen laskuttaja omassa sarakkeessaan (B, C, …)</p>
       </div>
     </details>
   </div>
 </section>
 
-<!-- ============ ARKISTO ============ -->
+<!-- ======================= ARKISTO ======================= -->
 <section id="arkistoView" class="view">
   <div class="card">
-    <div class="card-h">Tallennetut laskut</div>
-    <div class="row-btns">
-      <button class="btn ghost" id="btnRefreshArchive">Päivitä lista</button>
+    <div class="card-h">Tallennetut laskut
+      <select id="archiveYear" class="year-sel" hidden></select>
     </div>
-    <ul class="filelist" id="archiveList"><li class="muted">Ei haettu.</li></ul>
+    <ul class="filelist" id="archiveList"><li class="muted">Ei laskuja.</li></ul>
   </div>
 </section>
 
 </main>
 
-<!-- ============ ASETUKSET ============ -->
-<div class="sheet-backdrop" id="settingsBackdrop" hidden></div>
-<aside class="sheet" id="settingsPanel" hidden>
-  <div class="sheet-h">
-    <b>Asetukset</b>
-    <button class="icon-btn" id="btnCloseSettings" aria-label="Sulje">&#10005;</button>
+<footer>Tiedot pysyvät omassa OneDrivessasi ja tällä laitteella · ohjelma ei lähetä tietoja muualle</footer>
+
+<!-- ======================= ASETUKSET ======================= -->
+<dialog id="settingsDialog">
+  <h2>Asetukset</h2>
+
+  <div class="set-title">Tallennus</div>
+  <label>Rekisteritiedoston nimi
+    <input type="text" id="cfgRegFile">
+  </label>
+  <label>Laskujen alikansio
+    <input type="text" id="cfgOutFolder">
+  </label>
+  <label class="chk"><input type="checkbox" id="cfgYearFolders"> Vuosikansiot (Laskut/2026)</label>
+  <label>Tiedostonimi <span class="hint">{nro} {asiakas} {pvm} {vuosi}</span>
+    <input type="text" id="cfgFilePattern">
+  </label>
+
+  <div class="set-title">Sähköposti</div>
+  <label>Otsikko <span class="hint">{nro} {laskuttaja} {asiakas}</span>
+    <input type="text" id="cfgMailSubject">
+  </label>
+  <label>Viesti <span class="hint">{nro} {erapaiva} {summa} {viite} {laskuttaja}</span>
+    <textarea id="cfgMailBody" rows="6"></textarea>
+  </label>
+
+  <div class="set-title">Logo</div>
+  <p class="small muted" id="logoInfo"></p>
+  <div class="row-btns" id="logoBtns">
+    <label class="btn ghost file-btn">Valitse logo<input type="file" id="logoInput" accept="image/png,image/jpeg" hidden></label>
+    <button type="button" class="btn ghost" id="btnLogoClear">Poista logo</button>
   </div>
-  <div class="sheet-body">
 
-    <div class="set-group">
-      <div class="set-title">Microsoft-yhteys</div>
-      <label>Sovelluksen (client) ID
-        <input type="text" id="cfgClientId" placeholder="00000000-0000-0000-0000-000000000000">
-      </label>
-      <label>Tenant
-        <input type="text" id="cfgTenant" placeholder="common / organizations / tenant-id">
-      </label>
-      <div class="row-btns">
-        <button class="btn primary" id="btnLogin">Kirjaudu</button>
-        <button class="btn ghost" id="btnLogout">Kirjaudu ulos</button>
-      </div>
-      <div class="muted small" id="userInfo">Ei kirjautunut.</div>
-    </div>
+  <div class="set-title">Ohje</div>
+  <details class="small">
+    <summary>Miten ohjelma toimii</summary>
+    <p><b>Tietokone:</b> valitse kerran OneDriven Laskutus-kansio. Laskut tallentuvat kansioon automaattisesti ja laskunumero pidetään tiedostossa laskutus-tila.json.</p>
+    <p><b>Puhelin:</b> valitse rekisteri-Excel OneDrivesta. Tallenna lasku avaa jakovalikon: valitse OneDrive ja kansio Laskutus/Laskut/vuosi. Jaa PDF → sähköpostiohjelma liittää laskun suoraan viestiin.</p>
+    <p><b>Laskunumero puhelimella:</b> puhelin ei näe tietokoneen viimeisintä numeroa. Tarkista numero, jos olet laskuttanut samana päivänä myös tietokoneella.</p>
+  </details>
 
-    <div class="set-group">
-      <div class="set-title">Kansiot OneDrivessa</div>
-      <label>Rekisterikansio
-        <input type="text" id="cfgRegFolder" placeholder="Dokumentit/Laskutus">
-      </label>
-      <label>Laskujen tallennuskansio
-        <input type="text" id="cfgOutFolder" placeholder="Dokumentit/Laskutus/Laskut">
-      </label>
-      <label class="chk"><input type="checkbox" id="cfgYearFolders"> Luo vuosikansiot (…/2026)</label>
-      <label>Tiedostonimen malli
-        <input type="text" id="cfgFilePattern" placeholder="Lasku_{nro}_{asiakas}.pdf">
-      </label>
-    </div>
-
-    <div class="set-group">
-      <div class="set-title">Laskutus</div>
-      <label>Seuraava laskunumero
-        <input type="number" id="cfgNextNumber" min="1">
-      </label>
-      <label class="chk"><input type="checkbox" id="cfgSharedCounter" checked> Pidä laskunumero yhteisenä OneDriven kautta</label>
-      <label>Oletusmaksuehto (pv)
-        <input type="number" id="cfgTerms" min="0">
-      </label>
-      <label>Viivästyskorko
-        <input type="text" id="cfgInterest" placeholder="esim. 8 %">
-      </label>
-      <label>Oletus-ALV %
-        <input type="number" id="cfgVat" min="0" step="0.1">
-      </label>
-    </div>
-
-    <div class="set-group">
-      <div class="set-title">Sähköposti</div>
-      <label>Otsikko
-        <input type="text" id="cfgMailSubject" placeholder="Lasku {nro} / {lahettaja}">
-      </label>
-      <label>Viestin teksti
-        <textarea id="cfgMailBody" rows="5"></textarea>
-      </label>
-      <label>Kopio (cc)
-        <input type="text" id="cfgMailCc" placeholder="kirjanpito@yritys.fi">
-      </label>
-      <label class="chk"><input type="checkbox" id="cfgMailDraft"> Älä lähetä heti – tallenna luonnoksiin</label>
-    </div>
-
-    <div class="set-group">
-      <div class="set-title">Lähettäjän tiedot</div>
-      <div class="muted small">Luetaan rekisteristä, voit ylikirjoittaa tähän.</div>
-      <div class="grid2">
-        <label>Nimi<input type="text" id="cfgSenderName"></label>
-        <label>Y-tunnus<input type="text" id="cfgSenderBid"></label>
-        <label>Osoite<input type="text" id="cfgSenderAddr"></label>
-        <label>Postinumero<input type="text" id="cfgSenderZip"></label>
-        <label>Postitoimipaikka<input type="text" id="cfgSenderCity"></label>
-        <label>Sähköposti<input type="text" id="cfgSenderEmail"></label>
-        <label>Puhelin<input type="text" id="cfgSenderPhone"></label>
-        <label>IBAN<input type="text" id="cfgIban"></label>
-        <label>BIC<input type="text" id="cfgBic"></label>
-      </div>
-    </div>
-
-    <div class="row-btns sticky-save">
-      <button class="btn ghost" id="btnResetCfg">Palauta oletukset</button>
-      <button class="btn primary" id="btnSaveCfg">Tallenna asetukset</button>
-    </div>
+  <div class="dlg-btns">
+    <button type="button" class="btn ghost" id="btnResetCfg">Palauta oletukset</button>
+    <button type="button" class="btn ghost" id="btnCloseSettings">Sulje</button>
+    <button type="button" class="btn primary" id="btnSaveCfg">Tallenna</button>
   </div>
-</aside>
+</dialog>
 
-<div class="modal" id="previewModal" hidden>
-  <div class="modal-box">
-    <div class="sheet-h"><b>Laskun esikatselu</b><button class="icon-btn" id="btnClosePreview">&#10005;</button></div>
-    <iframe id="previewFrame" title="Esikatselu"></iframe>
-  </div>
-</div>
+<dialog id="previewDialog" class="preview">
+  <div class="preview-h"><b>Esikatselu</b><button type="button" class="icon-btn dark" id="btnClosePreview" aria-label="Sulje">✕</button></div>
+  <iframe id="previewFrame" title="Laskun esikatselu"></iframe>
+</dialog>
 
-<footer class="foot">Laskut tallentuvat omaan OneDriveesi · tiedot eivät kulje kolmannen osapuolen palvelimen kautta</footer>
-
-<script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@3.28.1/lib/msal-browser.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
 <script src="config.js"></script>
-<script src="graph.js"></script>
+<script src="storage.js"></script>
 <script src="invoice.js"></script>
 <script src="app.js"></script>
 </body>

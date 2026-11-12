@@ -1,11 +1,18 @@
-/* app.js – käyttöliittymän logiikka */
+/* app.js – Laskutus, käyttöliittymä (rekisteröinnitön OneDrive-malli) */
 
 const $ = (id) => document.getElementById(id);
 const cfg = CFG.data;
 
-let REG = { customers: [], recipients: [], products: [], sender: {}, source: '' };
+const REG_CACHE = 'laskutus.reg.v1';       // puhelimen välimuisti rekisteristä
+const STATE_LOCAL = 'laskutus.state.v1';   // puhelimen laskunumerot
+const LOGO_KEY = 'laskutus.logo.v1';       // asetuksista valittu logo (dataURL)
+const STATE_FILE = 'laskutus-tila.json';   // tietokoneella Laskutus-kansiossa
+
+let REG = { customers: [], products: [], billers: [], source: '', loaded: '' };
 let ROWS = [];
-let STATE_PATH = '';          // jaetun laskunumeron tilatiedosto OneDrivessa
+let STATE = { next: {}, log: [] };
+let LAST = null;           // viimeksi tallennettu lasku {inv, blob, name, path}
+let READY = false;         // kansio + rekisteri käytettävissä
 
 /* ===================================================================== */
 /* Apurit                                                                */
@@ -15,277 +22,414 @@ function status(msg, kind = '') {
   el.className = 'status ' + kind;
   el.textContent = msg || '';
 }
-function conn(msg, ok = false) {
-  const el = $('connState');
-  el.textContent = msg;
-  el.className = 'sub' + (ok ? ' ok' : '');
-}
-const norm = (s) => String(s ?? '').toLowerCase().trim().replace(/[\s_.\-:]/g, '');
+const norm = (s) => String(s ?? '').toLowerCase().trim()
+  .replace(/ä/g, 'a').replace(/ö/g, 'o').replace(/å/g, 'a').replace(/[\s_.\-:,()%]/g, '');
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const str = (v) => String(v ?? '').trim();
 
-function pick(obj, aliases) {
-  for (const a of aliases) {
-    for (const k of Object.keys(obj)) {
-      if (norm(k) === norm(a)) return obj[k];
-    }
-  }
-  for (const a of aliases) {
-    for (const k of Object.keys(obj)) {
-      if (norm(k).startsWith(norm(a))) return obj[k];
-    }
-  }
+function pick(row, names) {
+  for (const n of names) for (const k of Object.keys(row)) if (norm(k) === norm(n)) return row[k];
   return '';
 }
-function numVal(v) {
+function num(v) {
   if (v === null || v === undefined || v === '') return 0;
   if (typeof v === 'number') return v;
   return Number(String(v).replace(/\s|€|%/g, '').replace(',', '.')) || 0;
 }
+function splitEmails(v) {
+  return String(v || '').split(/[;,]/).map(s => s.trim()).filter(Boolean);
+}
 function safeName(s) {
   return String(s || '').replace(/[\\/:*?"<>|]/g, '-').replace(/\s+/g, ' ').trim();
 }
+function zipFi(v, country) {
+  const s = str(v);
+  if (/^\d{1,4}$/.test(s) && (!country || /suomi|finland/i.test(country))) return s.padStart(5, '0');
+  return s;
+}
+function nowFi() {
+  return new Date().toLocaleString('fi-FI', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+const isTouch = () => matchMedia('(pointer:coarse)').matches;
 
 /* ===================================================================== */
 /* Rekisterin luku                                                       */
 /* ===================================================================== */
-function sheetRows(wb, match) {
-  const name = wb.SheetNames.find(n => match.some(m => norm(n).includes(norm(m))));
-  if (!name) return null;
-  return XLSX.utils.sheet_to_json(wb.Sheets[name], { defval: '', raw: true });
+function findSheet(wb, names) {
+  return wb.SheetNames.find(n => names.some(m => norm(n).includes(norm(m))));
+}
+function sheetRows(wb, names) {
+  const n = findSheet(wb, names);
+  return n ? XLSX.utils.sheet_to_json(wb.Sheets[n], { defval: '', raw: true }) : [];
+}
+
+function parseBillers(wb) {
+  const sn = findSheet(wb, ['laskuttajarekisteri', 'laskuttaja', 'lahettaja']);
+  if (!sn) return [];
+  const a = XLSX.utils.sheet_to_json(wb.Sheets[sn], { header: 1, defval: '', raw: true });
+  if (a.length < 2) return [];
+  const rowOf = {};
+  for (let r = 1; r < a.length; r++) rowOf[norm(a[r][0])] = a[r];
+  const g = (c, ...names) => {
+    for (const n of names) { const r = rowOf[norm(n)]; if (r && str(r[c]) !== '') return str(r[c]); }
+    return '';
+  };
+  const width = Math.max(...a.map(r => r.length));
+  const out = [];
+  for (let c = 1; c < width; c++) {
+    const name = g(c, 'Saaja', 'Nimi');
+    if (!name) continue;
+    const interest = g(c, 'Viivästyskorko (%)', 'Viivästyskorko');
+    out.push({
+      label: str(a[0][c]) || `Laskuttaja ${c}`,
+      name,
+      sellerNo: g(c, 'Myyjänro'),
+      addr: g(c, 'Lähiosoite', 'Osoite'),
+      zip: zipFi(g(c, 'Postinumero'), g(c, 'Maa')),
+      city: g(c, 'Postitoimipaikka'),
+      country: g(c, 'Maa'),
+      phone: g(c, 'Puhelin 1', 'GSM 1', 'Puhelin'),
+      phone2: g(c, 'Puhelin 2', 'GSM 2'),
+      email: g(c, 'Sähköposti'),
+      web: g(c, 'Internet', 'Verkkosivu'),
+      bank: g(c, 'Pankki 1', 'Pankki'),
+      iban: g(c, 'IBAN 1', 'IBAN'),
+      bic: g(c, 'BIC 1', 'BIC'),
+      bank2: g(c, 'Pankki 2'),
+      iban2: g(c, 'IBAN 2'),
+      bic2: g(c, 'BIC 2'),
+      bid: g(c, 'Y-tunnus'),
+      vatId: g(c, 'ALV-numero', 'ALV-tunniste'),
+      tradeNo: g(c, 'Kaupparek. nro', 'Kaupparekisterinumero'),
+      terms: num(g(c, 'Maksuehto (pv)', 'Maksuehto')),
+      interest: interest ? (/%/.test(interest) ? interest : interest.replace('.', ',') + ' %') : '',
+      nextNumber: num(g(c, 'Seuraava laskunumero', 'Laskunumero')),
+      prefix: g(c, 'Laskunumeron etuliite'),
+      currency: g(c, 'Oletusvaluutta') || 'EUR',
+      vat: g(c, 'Oletus-ALV (%)') === '' ? 25.5 : num(g(c, 'Oletus-ALV (%)')),
+      note: g(c, 'Laskun vakioteksti'),
+      logo: g(c, 'Logo tiedostonimi')
+    });
+  }
+  return out;
 }
 
 function parseWorkbook(buf, source) {
   const wb = XLSX.read(buf, { type: 'array' });
 
-  const cust = (sheetRows(wb, ['asiakk', 'asiakas', 'customer']) || []).map(r => ({
-    id:      String(pick(r, ['asiakasnumero', 'asiakasnro', 'asiakas nro', 'nro', 'id', 'numero']) || '').trim(),
-    name:    String(pick(r, ['nimi', 'asiakas', 'yritys', 'name']) || '').trim(),
-    bid:     String(pick(r, ['y-tunnus', 'ytunnus', 'businessid', 'vat']) || '').trim(),
-    addr:    String(pick(r, ['osoite', 'katuosoite', 'lähiosoite', 'address']) || '').trim(),
-    zip:     String(pick(r, ['postinumero', 'postinro', 'zip']) || '').trim(),
-    city:    String(pick(r, ['postitoimipaikka', 'toimipaikka', 'kaupunki', 'city']) || '').trim(),
-    country: String(pick(r, ['maa', 'country']) || '').trim(),
-    email:   String(pick(r, ['sähköposti', 'sahkoposti', 'email', 'laskutussähköposti']) || '').trim(),
-    terms:   numVal(pick(r, ['maksuehto', 'maksuaika', 'terms'])),
-    einv:    String(pick(r, ['verkkolaskuosoite', 'ovt', 'verkkolasku']) || '').trim(),
-    oper:    String(pick(r, ['välittäjä', 'valittaja', 'operaattori']) || '').trim()
-  })).filter(c => c.name);
+  const customers = sheetRows(wb, ['asiakasrekisteri', 'asiakkaat']).map(r => {
+    const country = str(pick(r, ['Maa']));
+    const mails = splitEmails(pick(r, ['Laskutussähköposti']));
+    return {
+      id: str(pick(r, ['Asiakasnumero', 'Asiakasnro'])),
+      name: str(pick(r, ['Nimi'])),
+      addr: str(pick(r, ['Osoite', 'Lähiosoite'])),
+      zip: zipFi(pick(r, ['Postinumero']), country),
+      city: str(pick(r, ['Postitoimipaikka'])),
+      country,
+      bid: str(pick(r, ['Y-tunnus'])),
+      email: str(pick(r, ['Sähköposti'])),
+      terms: num(pick(r, ['Maksuehto', 'Maksuehto (pv)'])),
+      recipient: str(pick(r, ['Laskutusvastaanottaja'])),
+      mails,
+      einv: str(pick(r, ['Verkkolaskuosoite'])),
+      operator: str(pick(r, ['Välittäjä']))
+    };
+  }).filter(c => c.name);
 
-  const rcpt = (sheetRows(wb, ['vastaanott', 'yhteysh', 'recipient', 'contact']) || []).map(r => ({
-    cust:  String(pick(r, ['asiakasnumero', 'asiakasnro', 'asiakas', 'customer']) || '').trim(),
-    name:  String(pick(r, ['nimi', 'yhteyshenkilö', 'name']) || '').trim(),
-    email: String(pick(r, ['sähköposti', 'sahkoposti', 'email']) || '').trim(),
-    role:  String(pick(r, ['rooli', 'tehtävä', 'role']) || '').trim()
-  })).filter(r => r.email);
-
-  const prod = (sheetRows(wb, ['tuot', 'nimike', 'product', 'palvelu']) || []).map(r => ({
-    code: String(pick(r, ['koodi', 'tuotekoodi', 'nro', 'id']) || '').trim(),
-    name: String(pick(r, ['nimi', 'tuote', 'nimike', 'name']) || '').trim(),
-    desc: String(pick(r, ['kuvaus', 'selite', 'lisätieto', 'description']) || '').trim(),
-    unit: String(pick(r, ['yksikkö', 'yksikko', 'yks', 'unit']) || '').trim(),
-    price: numVal(pick(r, ['hinta', 'à-hinta', 'ahinta', 'yksikköhinta', 'veroton', 'price'])),
-    vat:  numVal(pick(r, ['alv', 'alv%', 'alv-%', 'vat']))
+  const products = sheetRows(wb, ['tuoterekisteri', 'tuotteet']).map(r => ({
+    code: str(pick(r, ['Tuotekoodi', 'Koodi'])),
+    name: str(pick(r, ['Tuote', 'Nimi'])),
+    unit: str(pick(r, ['Yksikkö'])),
+    price: num(pick(r, ['Hinta, alv 0%', 'Hinta alv 0%', 'Hinta'])),
+    vat: pick(r, ['ALV', 'ALV %']) === '' ? null : num(pick(r, ['ALV', 'ALV %']))
   })).filter(p => p.name);
 
-  // Lähettäjä: Kenttä / Arvo -parit
-  const sender = {};
-  const sName = wb.SheetNames.find(n => ['lähett', 'lahett', 'yritys', 'asetu', 'oma', 'sender']
-    .some(m => norm(n).includes(norm(m))));
-  if (sName) {
-    const rows = XLSX.utils.sheet_to_json(wb.Sheets[sName], { header: 1, defval: '' });
-    const map = {
-      name: ['nimi', 'yritys', 'yrityksennimi'], bid: ['y-tunnus', 'ytunnus'],
-      addr: ['osoite', 'katuosoite'], zip: ['postinumero'], city: ['postitoimipaikka', 'kaupunki'],
-      email: ['sähköposti', 'sahkoposti', 'email'], phone: ['puhelin', 'phone'],
-      iban: ['iban', 'tilinumero'], bic: ['bic', 'swift'], bank: ['pankki'],
-      terms: ['maksuehto'], interest: ['viivästyskorko', 'viivastyskorko'],
-      nextNumber: ['laskunumero', 'seuraavalaskunumero'], country: ['maa']
-    };
-    for (const row of rows) {
-      const k = norm(row[0]); const v = row[1];
-      if (!k || v === '' || v === undefined) continue;
-      for (const [field, aliases] of Object.entries(map)) {
-        if (aliases.some(a => k === norm(a) || k.startsWith(norm(a)))) sender[field] = v;
-      }
+  const billers = parseBillers(wb);
+  if (!customers.length && !products.length && !billers.length) {
+    throw new Error('Tiedostosta ei löytynyt Asiakas-, Tuote- tai Laskuttajarekisteriä.');
+  }
+  return { customers, products, billers, source, loaded: nowFi() };
+}
+
+function setRegistry(reg) {
+  REG = reg;
+  if (ST.mode === 'file') {
+    try { localStorage.setItem(REG_CACHE, JSON.stringify(reg)); } catch (_) {}
+  }
+  fillRegistry();
+}
+
+/* ===================================================================== */
+/* Laskunumerot                                                          */
+/* ===================================================================== */
+async function loadState() {
+  if (ST.mode === 'folder') {
+    STATE = (await ST.readJson(STATE_FILE)) || { next: {}, log: [] };
+  } else {
+    try { STATE = JSON.parse(localStorage.getItem(STATE_LOCAL) || 'null') || { next: {}, log: [] }; }
+    catch (_) { STATE = { next: {}, log: [] }; }
+  }
+  STATE.next = STATE.next || {};
+  STATE.log = STATE.log || [];
+}
+
+async function saveState() {
+  STATE.updated = new Date().toISOString();
+  if (STATE.log.length > 500) STATE.log = STATE.log.slice(-500);
+  if (ST.mode === 'folder') await ST.writeJson(STATE_FILE, STATE);
+  else localStorage.setItem(STATE_LOCAL, JSON.stringify(STATE));
+}
+
+function currentBiller() {
+  return REG.billers[Number($('laskuttaja').value) || 0] || null;
+}
+const billerKey = (b) => b ? (b.sellerNo || b.name) : '';
+
+/* Muuttaa tiedostonimimallin säännölliseksi lausekkeeksi, josta saadaan laskunumero */
+function patternRegex(prefix) {
+  const p = (cfg.filePattern || 'Lasku_{nro}_{asiakas}.pdf').replace(/\.pdf$/i, '') + '.pdf';
+  const parts = p.split(/(\{nro\}|\{asiakas\}|\{pvm\}|\{vuosi\}|\{summa\})/);
+  const rx = parts.map(x => {
+    if (x === '{nro}') return prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(\\d+)';
+    if (/^\{\w+\}$/.test(x)) return '.*?';
+    return x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }).join('');
+  return new RegExp('^' + rx + '$', 'i');
+}
+
+/* Tietokoneella: suurin olemassa oleva laskunumero laskukansiosta (myös puhelimella tehdyt) */
+async function scanMaxNumber(b) {
+  if (ST.mode !== 'folder' || !READY) return 0;
+  // jos usealla laskuttajalla on sama etuliite, laskuja ei voi erottaa tiedostonimestä
+  if (REG.billers.filter(x => (x.prefix || '') === (b.prefix || '')).length > 1) return 0;
+  const rx = patternRegex(b.prefix || '');
+  const y = new Date().getFullYear();
+  const folders = cfg.yearFolders ? [`${cfg.outFolder}/${y}`, `${cfg.outFolder}/${y - 1}`] : [cfg.outFolder];
+  let max = 0;
+  for (const f of folders) {
+    for (const e of await ST.list(f)) {
+      if (e.kind !== 'file') continue;
+      const m = e.name.match(rx);
+      if (m) max = Math.max(max, Number(m[1]));
     }
   }
-
-  REG = { customers: cust, recipients: rcpt, products: prod, sender, source };
-
-  // lähettäjän tiedot asetuksiin, ellei käsin ylikirjoitettu
-  for (const [k, v] of Object.entries(sender)) {
-    if (k === 'terms') { if (!cfg.terms) cfg.terms = numVal(v); continue; }
-    if (k === 'interest') { if (!cfg.interest) cfg.interest = String(v); continue; }
-    if (k === 'nextNumber') { if (!cfg.nextNumber) cfg.nextNumber = numVal(v); continue; }
-    if (!cfg.sender[k]) cfg.sender[k] = String(v);
-  }
-  CFG.save();
-  fillSettings();
-  fillCustomers();
-  fillProductSelects();
-  showRegSummary();
+  return max;
 }
 
-function showRegSummary() {
-  const el = $('regSummary');
-  if (!REG.customers.length && !REG.products.length) {
-    el.textContent = 'Rekisteriä ei ole ladattu.';
-    return;
-  }
-  el.innerHTML =
-    `<span class="pill">${REG.customers.length} asiakasta</span>` +
-    `<span class="pill">${REG.recipients.length} vastaanottajaa</span>` +
-    `<span class="pill">${REG.products.length} tuotetta</span>` +
-    `<span class="pill">${REG.sender.name || cfg.sender.name || 'lähettäjä puuttuu'}</span>` +
-    `<div class="muted small" style="margin-top:6px">Lähde: ${REG.source}</div>`;
+async function suggestNumber() {
+  const b = currentBiller();
+  if (!b) return;
+  const fromState = Number(STATE.next[billerKey(b)]) || 0;
+  const scanned = await scanMaxNumber(b);
+  const n = Math.max(b.nextNumber || 1, fromState, scanned + 1);
+  $('laskunro').value = (b.prefix || '') + n;
+  updateRef();
+  $('numberHint').textContent = ST.mode === 'file'
+    ? 'Puhelin ehdottaa numeroa tällä laitteella tehtyjen laskujen perusteella – tarkista, jos olet laskuttanut myös tietokoneella.'
+    : '';
+}
+
+function numberPart(nro, b) {
+  let s = String(nro || '');
+  if (b && b.prefix && s.startsWith(b.prefix)) s = s.slice(b.prefix.length);
+  const m = s.match(/(\d+)\s*$/);
+  return m ? Number(m[1]) : 0;
 }
 
 /* ===================================================================== */
-/* Asiakkaat ja tuotteet                                                 */
+/* Rekisterin näyttö                                                     */
 /* ===================================================================== */
-function fillCustomers() {
-  const sel = $('asiakas');
-  sel.innerHTML = '<option value="">– valitse asiakas –</option>';
-  REG.customers.forEach((c, i) => {
-    const o = document.createElement('option');
-    o.value = i;
-    o.textContent = (c.id ? c.id + ' · ' : '') + c.name;
-    sel.appendChild(o);
-  });
+function fillRegistry() {
+  // laskuttajat
+  const bs = $('laskuttaja');
+  bs.innerHTML = REG.billers.map((b, i) =>
+    `<option value="${i}">${esc(b.name)}${b.sellerNo ? ' (' + esc(b.sellerNo) + ')' : ''}</option>`).join('');
+  const lastIdx = REG.billers.findIndex(b => billerKey(b) === cfg.lastBiller);
+  bs.value = String(lastIdx >= 0 ? lastIdx : 0);
+  $('billerWrap').hidden = REG.billers.length <= 1;
+
+  // asiakkaat
+  const cs = $('asiakas');
+  const prev = cs.value;
+  cs.innerHTML = '<option value="">– valitse asiakas –</option>' + REG.customers.map((c, i) =>
+    `<option value="${i}">${c.id ? esc(c.id) + ' · ' : ''}${esc(c.name)}</option>`).join('');
+  if (prev && REG.customers[prev]) cs.value = prev;
+
+  // yhteenveto
+  const has = REG.customers.length || REG.products.length || REG.billers.length;
+  $('regSummary').innerHTML = has
+    ? `<span class="pill">${REG.customers.length} asiakasta</span>` +
+      `<span class="pill">${REG.products.length} tuotetta</span>` +
+      `<span class="pill">${REG.billers.length} laskuttaja${REG.billers.length === 1 ? '' : 'a'}</span>` +
+      `<div class="muted">${esc(REG.source)} · luettu ${esc(REG.loaded)}</div>` +
+      (REG.billers.length ? '' : '<div class="status err">Laskuttajarekisteri puuttuu tai on tyhjä.</div>')
+    : 'Rekisteriä ei ole ladattu.';
+  $('headState').textContent = has ? `Rekisteri luettu ${REG.loaded}` : 'Rekisteriä ei ole ladattu';
+
+  renderRows();
+  applyBiller();
+}
+
+async function applyBiller() {
+  const b = currentBiller();
+  if (!b) return;
+  cfg.lastBiller = billerKey(b); CFG.save();
+  const c = currentCustomer();
+  $('maksuehto').value = (c && c.terms) || b.terms || 14;
+  $('vapaateksti').value = b.note || '';
+  updateDue();
+  await suggestNumber();
+  calc();
 }
 
 function currentCustomer() {
-  const i = $('asiakas').value;
-  return i === '' ? null : REG.customers[Number(i)];
+  const v = $('asiakas').value;
+  return v === '' ? null : REG.customers[Number(v)];
 }
 
 function onCustomerChange() {
   const c = currentCustomer();
+  const b = currentBiller();
   if (!c) { $('asiakasTiedot').textContent = ''; $('emails').value = ''; return; }
-  const mails = new Set();
-  if (c.email) c.email.split(/[;,]/).forEach(e => e.trim() && mails.add(e.trim()));
-  REG.recipients.filter(r => r.cust && (r.cust === c.id || norm(r.cust) === norm(c.name)))
-    .forEach(r => mails.add(r.email));
-  $('emails').value = [...mails].join(', ');
-  $('asiakasTiedot').textContent =
-    [c.addr, [c.zip, c.city].filter(Boolean).join(' '), c.bid ? 'Y-tunnus ' + c.bid : '',
-     c.einv ? 'Verkkolasku ' + c.einv : ''].filter(Boolean).join(' · ');
-  if (c.terms) { $('maksuehto').value = c.terms; updateDue(); }
-}
-
-function fillProductSelects() {
-  document.querySelectorAll('select.psel').forEach(sel => {
-    const v = sel.value;
-    sel.innerHTML = '<option value="">– vapaa rivi –</option>' +
-      REG.products.map((p, i) => `<option value="${i}">${(p.code ? p.code + ' · ' : '') + p.name}</option>`).join('');
-    sel.value = v;
-  });
+  const mails = c.mails.length ? c.mails : splitEmails(c.email);
+  $('emails').value = mails.join('; ');
+  $('asiakasTiedot').textContent = [
+    c.recipient, c.addr, [c.zip, c.city].filter(Boolean).join(' '),
+    c.bid ? 'Y-tunnus ' + c.bid : '', c.einv ? 'Verkkolasku ' + c.einv : ''
+  ].filter(Boolean).join(' · ');
+  $('maksuehto').value = c.terms || (b && b.terms) || 14;
+  updateDue();
 }
 
 /* ===================================================================== */
 /* Laskurivit                                                            */
 /* ===================================================================== */
+function defaultVat() { const b = currentBiller(); return b ? b.vat : 25.5; }
+
 function addRow(data = {}) {
-  ROWS.push(Object.assign({ desc: '', qty: 1, unit: 'kpl', price: 0, vat: cfg.vat }, data));
+  ROWS.push({ product: '', desc: '', qty: 1, unit: 'kpl', price: 0, vat: defaultVat(), ...data });
   renderRows();
 }
 
 function renderRows() {
-  const tb = $('rivit').querySelector('tbody');
-  tb.innerHTML = '';
-  ROWS.forEach((r, i) => {
-    const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <td>
-        <div class="rowline">
-          <select class="psel" data-i="${i}"></select>
-          <input class="free" data-f="desc" data-i="${i}" value="${(r.desc || '').replace(/"/g, '&quot;')}" placeholder="Kuvaus laskulle">
+  const wrap = $('rivit');
+  const prodOpts = REG.products.map((p, j) =>
+    `<option value="${j}">${p.code ? esc(p.code) + ' · ' : ''}${esc(p.name)}</option>`).join('');
+  wrap.innerHTML = ROWS.map((r, i) => `
+    <div class="lrow" data-i="${i}">
+      <div class="lrow-top">
+        <div class="lcol">
+          <select class="psel" data-i="${i}" aria-label="Tuote rekisteristä">
+            <option value="">– valitse tuote tai kirjoita vapaa rivi –</option>${prodOpts}
+          </select>
+          <input data-f="desc" data-i="${i}" value="${esc(r.desc)}" placeholder="Tuote / kuvaus laskulle">
         </div>
-      </td>
-      <td><input type="number" step="any" data-f="qty" data-i="${i}" value="${r.qty}" style="width:70px"></td>
-      <td><input data-f="unit" data-i="${i}" value="${r.unit || ''}" style="width:60px"></td>
-      <td><input type="number" step="any" data-f="price" data-i="${i}" value="${r.price}" style="width:85px"></td>
-      <td><input type="number" step="any" data-f="vat" data-i="${i}" value="${r.vat}" style="width:65px"></td>
-      <td class="num"><b>${INV.num(INV.lineTotal(r))}</b></td>
-      <td><button class="del" data-del="${i}" title="Poista">&times;</button></td>`;
-    tb.appendChild(tr);
+        <button type="button" class="del" data-del="${i}" aria-label="Poista rivi" title="Poista rivi">×</button>
+      </div>
+      <div class="lrow-nums">
+        <label>Määrä<input type="number" step="any" inputmode="decimal" data-f="qty" data-i="${i}" value="${r.qty}"></label>
+        <label>Yks.<input data-f="unit" data-i="${i}" value="${esc(r.unit)}"></label>
+        <label>Hinta, alv 0%<input type="number" step="any" inputmode="decimal" data-f="price" data-i="${i}" value="${r.price}"></label>
+        <label>ALV %<input type="number" step="any" inputmode="decimal" data-f="vat" data-i="${i}" value="${r.vat}"></label>
+        <div class="ltot" data-tot="${i}">${INV.money(INV.lineTotal(r))}</div>
+      </div>
+    </div>`).join('');
+  ROWS.forEach((r, i) => {
+    const sel = wrap.querySelector(`select.psel[data-i="${i}"]`);
+    if (sel && r.product !== '' && REG.products[r.product]) sel.value = r.product;
   });
-  fillProductSelects();
   calc();
 }
 
 $('rivit').addEventListener('input', (e) => {
   const i = e.target.dataset.i, f = e.target.dataset.f;
-  if (i === undefined) return;
-  if (f) {
-    ROWS[i][f] = (f === 'desc' || f === 'unit') ? e.target.value : numVal(e.target.value);
-    const row = e.target.closest('tr');
-    row.querySelector('td.num b').textContent = INV.num(INV.lineTotal(ROWS[i]));
-    calc();
-  }
+  if (i === undefined || !f) return;
+  ROWS[i][f] = (f === 'desc' || f === 'unit') ? e.target.value : num(e.target.value);
+  const tot = $('rivit').querySelector(`[data-tot="${i}"]`);
+  if (tot) tot.textContent = INV.money(INV.lineTotal(ROWS[i]));
+  calc();
 });
 
 $('rivit').addEventListener('change', (e) => {
-  if (e.target.classList.contains('psel')) {
-    const i = Number(e.target.dataset.i);
-    const pi = e.target.value;
-    if (pi !== '') {
-      const p = REG.products[Number(pi)];
-      ROWS[i].desc = p.desc ? `${p.name} – ${p.desc}` : p.name;
-      ROWS[i].unit = p.unit || 'kpl';
-      ROWS[i].price = p.price;
-      ROWS[i].vat = p.vat || cfg.vat;
-      renderRows();
-      const sel = document.querySelector(`select.psel[data-i="${i}"]`);
-      if (sel) sel.value = pi;
-    }
+  if (!e.target.classList.contains('psel')) return;
+  const i = Number(e.target.dataset.i), v = e.target.value;
+  ROWS[i].product = v;
+  if (v !== '') {
+    const p = REG.products[Number(v)];
+    Object.assign(ROWS[i], {
+      desc: p.name, unit: p.unit || 'kpl', price: p.price,
+      vat: p.vat === null ? defaultVat() : p.vat
+    });
   }
+  renderRows();
 });
 
 $('rivit').addEventListener('click', (e) => {
   const d = e.target.dataset.del;
-  if (d !== undefined) { ROWS.splice(Number(d), 1); if (!ROWS.length) addRow(); else renderRows(); }
+  if (d === undefined) return;
+  ROWS.splice(Number(d), 1);
+  if (!ROWS.length) addRow(); else renderRows();
 });
 
 function calc() {
+  const b = currentBiller();
+  const cur = b && b.currency;
   const t = INV.totals(ROWS);
-  $('tNetto').textContent = INV.money(t.net);
-  $('tAlv').textContent = INV.money(t.vat);
-  $('tBrutto').textContent = INV.money(t.gross);
+  $('tNetto').textContent = INV.money(t.net, cur);
+  $('tAlv').textContent = INV.money(t.vat, cur);
+  $('tBrutto').textContent = INV.money(t.gross, cur);
 }
 
 /* ===================================================================== */
 /* Laskun tiedot                                                         */
 /* ===================================================================== */
 function updateDue() {
-  const d = $('laskupvm').value || INV.today();
-  $('erapvm').value = INV.addDays(d, numVal($('maksuehto').value));
+  $('erapvm').value = INV.addDays($('laskupvm').value || INV.today(), num($('maksuehto').value));
 }
 function updateRef() {
   $('viite').value = INV.reference($('laskunro').value || '1');
 }
 
-function buildInvoiceObject() {
-  const c = currentCustomer();
+async function logoFor(b) {
+  const own = localStorage.getItem(LOGO_KEY);
+  if (own) return own;
+  if (ST.mode === 'folder' && READY && b.logo) {
+    try {
+      const f = await ST.readFile(b.logo);
+      return await new Promise((res, rej) => {
+        const r = new FileReader();
+        r.onload = () => res(r.result); r.onerror = () => rej(r.error);
+        r.readAsDataURL(f);
+      });
+    } catch (_) { console.warn('Logoa ei löytynyt kansiosta:', b.logo); }
+  }
+  return '';
+}
+
+function buildInvoice(logoData = '') {
+  const b = currentBiller() || {};
   return {
     number: $('laskunro').value.trim(),
     date: $('laskupvm').value || INV.today(),
     due: $('erapvm').value,
-    terms: numVal($('maksuehto').value),
+    terms: num($('maksuehto').value),
     reference: $('viite').value,
     deliveryDate: $('toimituspvm').value,
-    interest: cfg.interest,
     note: $('vapaateksti').value.trim(),
-    sender: Object.assign({}, REG.sender, cfg.sender),
-    customer: c || { name: '', addr: '', zip: '', city: '' },
-    lines: ROWS.filter(r => (r.desc || '').trim() || INV.lineTotal(r))
+    sender: { ...b, logoData },
+    customer: currentCustomer() || {},
+    emails: splitEmails($('emails').value),
+    lines: ROWS.filter(r => str(r.desc) || INV.lineTotal(r))
   };
 }
 
 function validate(inv) {
+  if (!REG.billers.length) return 'Lataa ensin rekisteri (Laskuttajarekisteri puuttuu).';
   if (!inv.customer.name) return 'Valitse asiakas.';
   if (!inv.lines.length) return 'Lisää vähintään yksi laskurivi.';
   if (!inv.number) return 'Laskunumero puuttuu.';
-  if (!inv.sender.name) return 'Lähettäjän tiedot puuttuvat (Asetukset tai rekisterin Lähettäjä-välilehti).';
+  if (!inv.due) return 'Eräpäivä puuttuu.';
   return '';
 }
 
@@ -293,335 +437,474 @@ function fileNameFor(inv) {
   const t = INV.totals(inv.lines);
   return safeName(
     (cfg.filePattern || 'Lasku_{nro}_{asiakas}.pdf')
-      .replace('{nro}', inv.number)
-      .replace('{asiakas}', inv.customer.name)
-      .replace('{pvm}', inv.date)
-      .replace('{vuosi}', inv.date.slice(0, 4))
-      .replace('{summa}', t.gross.toFixed(2))
+      .replace(/\{nro\}/g, inv.number)
+      .replace(/\{asiakas\}/g, inv.customer.name)
+      .replace(/\{pvm\}/g, inv.date)
+      .replace(/\{vuosi\}/g, inv.date.slice(0, 4))
+      .replace(/\{summa\}/g, t.gross.toFixed(2))
   ).replace(/\.pdf$/i, '') + '.pdf';
 }
 
 function outFolderFor(inv) {
-  let f = cfg.outFolder || 'Dokumentit/Laskutus/Laskut';
-  if (cfg.yearFolders) f += '/' + inv.date.slice(0, 4);
-  return f;
+  return (cfg.outFolder || 'Laskut') + (cfg.yearFolders ? '/' + inv.date.slice(0, 4) : '');
 }
 
 function mailTexts(inv) {
   const t = INV.totals(inv.lines);
   const rep = (s) => String(s || '')
-    .replace(/{nro}/g, inv.number)
-    .replace(/{lahettaja}/g, inv.sender.name || '')
-    .replace(/{asiakas}/g, inv.customer.name || '')
-    .replace(/{erapaiva}/g, INV.dateFi(inv.due))
-    .replace(/{summa}/g, INV.money(t.gross))
-    .replace(/{viite}/g, inv.reference);
+    .replace(/\{nro\}/g, inv.number)
+    .replace(/\{laskuttaja\}/g, inv.sender.name || '')
+    .replace(/\{asiakas\}/g, inv.customer.name || '')
+    .replace(/\{erapaiva\}/g, INV.dateFi(inv.due))
+    .replace(/\{summa\}/g, INV.money(t.gross, inv.sender.currency))
+    .replace(/\{viite\}/g, inv.reference);
   return { subject: rep(cfg.mailSubject), body: rep(cfg.mailBody) };
 }
 
 /* ===================================================================== */
-/* Laskunumeron hallinta                                                 */
+/* Esikatselu ja tallennus                                               */
 /* ===================================================================== */
-function statePath() {
-  const folder = (cfg.regFolder || '').replace(/\/+$/, '');
-  return (folder ? folder + '/' : '') + 'laskutus-tila.json';
+async function makePdf() {
+  const b = currentBiller();
+  const inv = buildInvoice(b ? await logoFor(b) : '');
+  const err = validate(inv);
+  if (err) { status(err, 'err'); return null; }
+  const doc = INV.buildPdf(inv);
+  return { inv, doc, blob: doc.output('blob'), name: fileNameFor(inv) };
 }
 
-async function loadCounter() {
-  if (!cfg.sharedCounter || !G.signedIn()) return;
+function openBlob(blob) {
+  const url = URL.createObjectURL(blob);
+  if (isTouch()) {
+    window.open(url, '_blank');
+  } else {
+    $('previewFrame').src = url;
+    $('previewDialog').showModal();
+  }
+  setTimeout(() => URL.revokeObjectURL(url), 120000);
+}
+
+$('btnPreview').onclick = async () => {
   try {
-    STATE_PATH = statePath();
-    const st = await G.readJson(STATE_PATH);
-    if (st && st.nextNumber) { cfg.nextNumber = Number(st.nextNumber); CFG.save(); }
-  } catch (e) { console.warn('Laskunumeron luku epäonnistui', e); }
+    const r = await makePdf();
+    if (r) { openBlob(r.blob); status(''); }
+  } catch (e) { status('PDF:n luonti epäonnistui: ' + e.message, 'err'); }
+};
+$('btnClosePreview').onclick = () => { $('previewDialog').close(); $('previewFrame').src = 'about:blank'; };
+
+/* Tallenna lasku:
+ *  - tietokone: PDF suoraan OneDriven Laskutus/Laskut/vuosi -kansioon
+ *  - puhelin:   jakovalikko (OneDrive / sähköposti); varalla lataus laitteelle */
+$('btnSave').onclick = async () => {
+  let r;
+  try { r = await makePdf(); } catch (e) { status('PDF:n luonti epäonnistui: ' + e.message, 'err'); return; }
+  if (!r) return;
+  const b = currentBiller();
+  const n = numberPart(r.inv.number, b);
+
+  if (ST.mode === 'folder') {
+    if (!READY) { status('Valitse ensin Laskutus-kansio (Rekisteri-välilehti).', 'err'); return; }
+    try {
+      if ((await ST.permission(true)) !== 'granted') { status('Kansioon ei annettu kirjoitusoikeutta.', 'err'); return; }
+      const path = outFolderFor(r.inv) + '/' + r.name;
+      if (await ST.exists(path) && !confirm(`Tiedosto ${r.name} on jo olemassa. Korvataanko?`)) return;
+      status('Tallennetaan…', 'work');
+      await ST.writeFile(path, r.blob);
+      await recordInvoice(r, b, n, path);
+      LAST = { ...r, path };
+      showDone(`Lasku ${r.inv.number} tallennettu`,
+        `${ST.folderName()}/${path} – OneDrive synkronoi sen automaattisesti.`);
+      status('');
+    } catch (e) { status('Tallennus epäonnistui: ' + e.message, 'err'); }
+    return;
+  }
+
+  // puhelin: jako heti (vaatii käyttäjän napautuksen, joten ei odotuksia ennen jakoa)
+  LAST = { ...r, path: '' };
+  const file = new File([r.blob], r.name, { type: 'application/pdf' });
+  const folder = outFolderFor(r.inv);
+  let shared = false;
+  if (ST.canShareFile(file)) {
+    try {
+      await ST.share(file, r.name, '');
+      shared = true;
+    } catch (e) {
+      if (e.name === 'AbortError') { status('Tallennus peruttiin.', ''); return; }
+      ST.download(r.blob, r.name);
+    }
+  } else {
+    ST.download(r.blob, r.name);
+  }
+  await recordInvoice(r, b, n, '');
+  showDone(`Lasku ${r.inv.number} luotu`,
+    shared ? `Jos valitsit OneDriven, tallenna kansioon Laskutus/${folder}.`
+           : `PDF ladattiin laitteelle. Siirrä se OneDriveen kansioon Laskutus/${folder}.`);
+  status('');
+};
+
+async function recordInvoice(r, b, n, path) {
+  const key = billerKey(b);
+  if (n) STATE.next[key] = Math.max(Number(STATE.next[key]) || 0, n + 1);
+  STATE.log.push({
+    nro: r.inv.number, pvm: r.inv.date, erapaiva: r.inv.due,
+    asiakas: r.inv.customer.name, summa: INV.totals(r.inv.lines).gross,
+    laskuttaja: b ? b.name : '', tiedosto: path || r.name
+  });
+  try { await saveState(); } catch (e) { console.warn('Tilan tallennus epäonnistui', e); }
+  if (ST.mode === 'folder') refreshArchive().catch(() => {});
+  else renderLocalArchive();
 }
 
-async function bumpCounter(used) {
-  const next = Math.max(Number(cfg.nextNumber) || 0, Number(used) || 0) + 1;
-  cfg.nextNumber = next; CFG.save(); fillSettings();
-  if (cfg.sharedCounter && G.signedIn()) {
-    try {
-      await G.writeJson(statePath(), {
-        nextNumber: next, lastInvoice: used,
-        updated: new Date().toISOString(),
-        by: (G.account && G.account.username) || ''
-      });
-    } catch (e) { console.warn('Laskunumeron tallennus epäonnistui', e); }
+/* ===================================================================== */
+/* Valmis lasku: jako ja sähköposti                                      */
+/* ===================================================================== */
+function showDone(title, text) {
+  $('doneTitle').textContent = '✓ ' + title;
+  $('doneText').textContent = text;
+  const f = LAST ? new File([LAST.blob], LAST.name, { type: 'application/pdf' }) : null;
+  $('btnShare').hidden = !(f && ST.canShareFile(f));
+  $('doneCard').hidden = false;
+  $('doneCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function copyText(t) {
+  if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(t);
+  const ta = document.createElement('textarea');
+  ta.value = t; document.body.appendChild(ta); ta.select();
+  try { document.execCommand('copy'); } finally { ta.remove(); }
+  return Promise.resolve();
+}
+
+/* Jaa PDF: sähköpostiohjelma saa laskun liitteenä. Osoitteet kopioidaan leikepöydälle,
+   koska jakovalikko ei välitä vastaanottajia. */
+$('btnShare').onclick = async () => {
+  if (!LAST) return;
+  const addr = LAST.inv.emails.join('; ');
+  if (addr) copyText(addr).catch(() => {});
+  const { subject, body } = mailTexts(LAST.inv);
+  const file = new File([LAST.blob], LAST.name, { type: 'application/pdf' });
+  try {
+    await ST.share(file, subject, body);
+    status(addr ? `Vastaanottajat kopioitu leikepöydälle: ${addr}` : '', 'ok');
+  } catch (e) {
+    if (e.name !== 'AbortError') status('Jako epäonnistui: ' + e.message, 'err');
+  }
+};
+
+/* Avaa sähköposti: vastaanottajat, otsikko ja viesti valmiina; PDF liitetään itse */
+$('btnMail').onclick = () => {
+  if (!LAST) return;
+  const [to, ...cc] = LAST.inv.emails;
+  const { subject, body } = mailTexts(LAST.inv);
+  const q = [];
+  if (cc.length) q.push('cc=' + encodeURIComponent(cc.join(',')));
+  q.push('subject=' + encodeURIComponent(subject));
+  q.push('body=' + encodeURIComponent(body));
+  location.href = 'mailto:' + encodeURIComponent(to || '') + '?' + q.join('&');
+  status(LAST.path
+    ? `Liitä viestiin tiedosto ${LAST.name} (OneDrive › ${ST.folderName()}/${LAST.path.split('/').slice(0, -1).join('/')}).`
+    : `Liitä viestiin tiedosto ${LAST.name}.`, 'ok');
+};
+
+$('btnCopyAddr').onclick = async () => {
+  if (!LAST) return;
+  const addr = LAST.inv.emails.join('; ');
+  if (!addr) { status('Laskulla ei ole sähköpostiosoitteita.', 'err'); return; }
+  await copyText(addr).catch(() => {});
+  status('Kopioitu: ' + addr, 'ok');
+};
+
+$('btnOpenPdf').onclick = () => { if (LAST) openBlob(LAST.blob); };
+
+$('btnNew').onclick = async () => {
+  LAST = null;
+  $('doneCard').hidden = true;
+  $('asiakas').value = '';
+  onCustomerChange();
+  $('toimituspvm').value = '';
+  $('laskupvm').value = INV.today();
+  ROWS = [];
+  addRow();
+  await applyBiller();
+  status('');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+};
+
+/* ===================================================================== */
+/* Kansio (tietokone)                                                    */
+/* ===================================================================== */
+async function connectFolder() {
+  READY = false;
+  if (!ST.dir) { showSetup('pick'); return; }
+  const p = await ST.permission(false);
+  if (p !== 'granted') { showSetup('reconnect'); return; }
+  READY = true;
+  $('folderName').textContent = ST.folderName();
+  await listRegistryFiles();
+  await loadState();
+  await loadRegistryFromFolder();
+  refreshArchive().catch(() => {});
+}
+
+async function listRegistryFiles() {
+  const files = (await ST.list('')).filter(e => e.kind === 'file' && /\.xls[xm]$/i.test(e.name) && !e.name.startsWith('~$'));
+  const sel = $('regFile');
+  sel.innerHTML = files.length
+    ? files.map(f => `<option>${esc(f.name)}</option>`).join('')
+    : '<option value="">– kansiossa ei ole Excel-tiedostoja –</option>';
+  if (files.some(f => f.name === cfg.regFile)) sel.value = cfg.regFile;
+  else if (files.length) { sel.value = files[0].name; }
+  return files;
+}
+
+async function loadRegistryFromFolder() {
+  const name = $('regFile').value;
+  if (!name) { showSetup('noreg'); return; }
+  try {
+    const f = await ST.readFile(name);
+    setRegistry(parseWorkbook(await f.arrayBuffer(), `${ST.folderName()}/${name}`));
+    if (cfg.regFile !== name) { cfg.regFile = name; CFG.save(); }
+    hideSetup();
+    status('Rekisteri luettu.', 'ok');
+  } catch (e) {
+    status(e.name === 'NotReadableError'
+      ? 'Rekisteri on auki toisessa ohjelmassa tai OneDrive synkronoi sitä – yritä hetken päästä.'
+      : 'Rekisterin luku epäonnistui: ' + e.message, 'err');
   }
 }
 
-function newInvoiceNumber() {
-  $('laskunro').value = String(cfg.nextNumber || 1001);
-  updateRef();
+$('btnPickFolder').onclick = async () => {
+  try {
+    await ST.pickFolder();
+    await connectFolder();
+  } catch (e) {
+    if (e.name !== 'AbortError') status('Kansion valinta epäonnistui: ' + e.message, 'err');
+  }
+};
+$('btnReloadReg').onclick = async () => {
+  if (!READY) { await reconnect(); return; }
+  await loadRegistryFromFolder();
+  await suggestNumber();
+};
+$('regFile').onchange = () => loadRegistryFromFolder();
+
+async function reconnect() {
+  try {
+    if ((await ST.permission(true)) === 'granted') await connectFolder();
+    else status('Kansion käyttöoikeutta ei annettu.', 'err');
+  } catch (e) { status(e.message, 'err'); }
 }
 
 /* ===================================================================== */
-/* Toiminnot: esikatselu, lataus, tallennus, lähetys                     */
+/* Rekisteri tiedostona (puhelin)                                        */
 /* ===================================================================== */
-function makePdf() {
-  const inv = buildInvoiceObject();
-  const err = validate(inv);
-  if (err) { status(err, 'err'); return null; }
-  return { inv, doc: INV.buildPdf(inv) };
+$('regInput').onchange = async (e) => {
+  const f = e.target.files[0];
+  if (!f) return;
+  try {
+    setRegistry(parseWorkbook(await f.arrayBuffer(), f.name));
+    $('fileName').textContent = f.name;
+    hideSetup();
+    status('Rekisteri luettu ja tallennettu tälle laitteelle.', 'ok');
+  } catch (err) {
+    status('Rekisterin luku epäonnistui: ' + err.message, 'err');
+  }
+  e.target.value = '';
+};
+
+/* ===================================================================== */
+/* Käyttöönottokortti                                                    */
+/* ===================================================================== */
+function showSetup(kind) {
+  const t = $('setupText'), b = $('setupBtns');
+  const go = '<button type="button" class="btn ghost" data-go="rekisteriView">Rekisteri-välilehdelle</button>';
+  if (kind === 'pick') {
+    t.innerHTML = '<b>Aloitus:</b> valitse tietokoneen OneDrive-kansiosta <b>Laskutus</b>-kansio, jossa rekisteri-Excel on.';
+    b.innerHTML = '<button type="button" class="btn" data-act="pick">Valitse Laskutus-kansio</button>';
+  } else if (kind === 'reconnect') {
+    t.innerHTML = `Selain pyytää vahvistuksen kansion <b>${esc(ST.folderName())}</b> käyttöön.`;
+    b.innerHTML = '<button type="button" class="btn" data-act="reconnect">Salli kansion käyttö</button>';
+  } else if (kind === 'noreg') {
+    t.innerHTML = 'Valitusta kansiosta ei löytynyt rekisteri-Exceliä. Valitse kansio, jossa <b>Laskutus-rekisteri.xlsx</b> on.';
+    b.innerHTML = '<button type="button" class="btn" data-act="pick">Valitse toinen kansio</button>';
+  } else if (kind === 'file') {
+    t.innerHTML = '<b>Aloitus:</b> valitse rekisteri-Excel OneDrivesta. Rekisteri muistetaan tällä laitteella.';
+    b.innerHTML = '<label class="btn file-btn">Valitse rekisteri-Excel<input type="file" accept=".xlsx,.xlsm" data-act="file" hidden></label>' + go;
+  }
+  $('setupCard').hidden = false;
+  $('headState').textContent = kind === 'reconnect' ? 'Kansion käyttö odottaa vahvistusta' : 'Rekisteriä ei ole ladattu';
 }
+function hideSetup() { $('setupCard').hidden = true; }
 
-$('btnPreview').onclick = () => {
-  const r = makePdf(); if (!r) return;
-  $('previewFrame').src = r.doc.output('bloburl');
-  $('previewModal').hidden = false;
-  status('');
-};
-$('btnClosePreview').onclick = () => { $('previewModal').hidden = true; $('previewFrame').src = ''; };
-
-$('btnDownload').onclick = () => {
-  const r = makePdf(); if (!r) return;
-  r.doc.save(fileNameFor(r.inv));
-  status('PDF ladattu laitteelle.', 'ok');
-};
-
-async function saveToOneDrive(r) {
-  const name = fileNameFor(r.inv);
-  const path = outFolderFor(r.inv) + '/' + name;
-  const blob = r.doc.output('blob');
-  status('Tallennetaan OneDriveen…', 'work');
-  const item = await G.uploadFile(path, blob, 'application/pdf');
-  return { name, path, item };
-}
-
-$('btnSave').onclick = async () => {
-  const r = makePdf(); if (!r) return;
-  try {
-    if (!G.signedIn()) { status('Kirjaudu ensin Microsoft-tilille asetuksissa.', 'err'); return; }
-    const s = await saveToOneDrive(r);
-    await bumpCounter(r.inv.number);
-    status(`Tallennettu: ${s.path}`, 'ok');
-    refreshArchive().catch(() => {});
-  } catch (e) { status('Virhe: ' + e.message, 'err'); }
-};
-
-$('btnSend').onclick = async () => {
-  const r = makePdf(); if (!r) return;
-  const to = $('emails').value.split(/[;,]/).map(s => s.trim()).filter(Boolean);
-  if (!to.length) { status('Sähköpostiosoite puuttuu.', 'err'); return; }
-  try {
-    if (!G.signedIn()) { status('Kirjaudu ensin Microsoft-tilille asetuksissa.', 'err'); return; }
-    const s = await saveToOneDrive(r);
-    const b64 = r.doc.output('datauristring').split(',')[1];
-    const { subject, body } = mailTexts(r.inv);
-    const payload = {
-      to, cc: (cfg.mailCc || '').split(/[;,]/), subject, body,
-      fileName: s.name, base64: b64
-    };
-    status(cfg.mailDraft ? 'Luodaan luonnos…' : 'Lähetetään sähköpostia…', 'work');
-    if (cfg.mailDraft) await G.createDraft(payload); else await G.sendMail(payload);
-    await bumpCounter(r.inv.number);
-    status(cfg.mailDraft
-      ? `Tallennettu (${s.path}) ja luonnos luotu Outlookiin.`
-      : `Tallennettu (${s.path}) ja lähetetty: ${to.join(', ')}`, 'ok');
-    refreshArchive().catch(() => {});
-  } catch (e) { status('Virhe: ' + e.message, 'err'); }
-};
-
-/* ===================================================================== */
-/* Rekisterin lataus                                                     */
-/* ===================================================================== */
-$('btnListFiles').onclick = async () => {
-  const folder = $('regFolder').value.trim();
-  cfg.regFolder = folder; CFG.save();
-  try {
-    status('Haetaan kansiota…', 'work');
-    const items = await G.listChildren(folder);
-    const xls = items.filter(i => i.file && /\.xlsx?$|\.xlsm$/i.test(i.name));
-    const sel = $('regFile');
-    sel.innerHTML = '<option value="">– valitse tiedosto –</option>' +
-      xls.map(f => `<option value="${f.name}">${f.name}</option>`).join('');
-    if (cfg.regFile && xls.some(f => f.name === cfg.regFile)) sel.value = cfg.regFile;
-    status(xls.length ? `${xls.length} Excel-tiedostoa löytyi.` : 'Kansiosta ei löytynyt Excel-tiedostoja.', xls.length ? 'ok' : 'err');
-  } catch (e) { status('Virhe: ' + e.message, 'err'); }
-};
-
-$('btnLoadReg').onclick = async () => {
-  const folder = $('regFolder').value.trim();
-  const file = $('regFile').value;
-  if (!file) { status('Valitse rekisteritiedosto.', 'err'); return; }
-  cfg.regFolder = folder; cfg.regFile = file; CFG.save();
-  try {
-    status('Ladataan rekisteriä…', 'work');
-    const buf = await G.downloadFile((folder ? folder + '/' : '') + file);
-    parseWorkbook(buf, 'OneDrive: ' + folder + '/' + file);
-    await loadCounter();
-    newInvoiceNumber();
-    status('Rekisteri ladattu.', 'ok');
-  } catch (e) { status('Virhe: ' + e.message, 'err'); }
-};
-
-$('localXlsx').onchange = async (e) => {
-  const f = e.target.files[0]; if (!f) return;
-  const buf = await f.arrayBuffer();
-  parseWorkbook(buf, 'Paikallinen tiedosto: ' + f.name);
-  newInvoiceNumber();
-  status('Rekisteri ladattu paikallisesti.', 'ok');
-};
+$('setupCard').addEventListener('click', async (e) => {
+  const act = e.target.dataset.act, go = e.target.dataset.go;
+  if (act === 'pick') $('btnPickFolder').click();
+  if (act === 'reconnect') await reconnect();
+  if (go) showView(go);
+});
+$('setupCard').addEventListener('change', (e) => {
+  if (e.target.dataset.act === 'file') $('regInput').onchange(e);
+});
 
 /* ===================================================================== */
 /* Arkisto                                                               */
 /* ===================================================================== */
 async function refreshArchive() {
-  const ul = $('archiveList');
-  if (!G.signedIn()) { ul.innerHTML = '<li class="muted">Kirjaudu nähdäksesi tallennetut laskut.</li>'; return; }
-  let folder = cfg.outFolder || '';
-  if (cfg.yearFolders) folder += '/' + new Date().getFullYear();
-  try {
-    const items = await G.listChildren(folder);
-    const pdfs = items.filter(i => i.file && /\.pdf$/i.test(i.name))
-      .sort((a, b) => (b.lastModifiedDateTime || '').localeCompare(a.lastModifiedDateTime || ''));
-    ul.innerHTML = pdfs.length
-      ? pdfs.map(f => `<li><a href="${f.webUrl}" target="_blank" rel="noopener">${f.name}</a>
-          <span class="muted small">${(f.lastModifiedDateTime || '').slice(0, 10)}</span></li>`).join('')
-      : '<li class="muted">Kansiossa ei ole laskuja.</li>';
-  } catch (e) {
-    ul.innerHTML = `<li class="muted">Kansiota ei löytynyt (${folder}).</li>`;
+  const ul = $('archiveList'), ys = $('archiveYear');
+  if (ST.mode !== 'folder') { renderLocalArchive(); return; }
+  if (!READY) { ul.innerHTML = '<li class="muted">Valitse ensin Laskutus-kansio.</li>'; return; }
+
+  let folder = cfg.outFolder || 'Laskut';
+  if (cfg.yearFolders) {
+    const years = (await ST.list(folder)).filter(e => e.kind === 'directory' && /^\d{4}$/.test(e.name))
+      .map(e => e.name).sort().reverse();
+    const cur = String(new Date().getFullYear());
+    if (!years.includes(cur)) years.unshift(cur);
+    const keep = ys.value && years.includes(ys.value) ? ys.value : years[0];
+    ys.innerHTML = years.map(y => `<option>${y}</option>`).join('');
+    ys.value = keep;
+    ys.hidden = false;
+    folder += '/' + keep;
+  } else ys.hidden = true;
+
+  const files = [];
+  for (const e of await ST.list(folder)) {
+    if (e.kind !== 'file' || !/\.pdf$/i.test(e.name)) continue;
+    const f = await e.handle.getFile();
+    files.push({ name: e.name, handle: e.handle, mod: f.lastModified });
   }
+  files.sort((a, b) => b.mod - a.mod);
+  ul.innerHTML = files.length
+    ? files.map((f, i) => `<li><button type="button" data-f="${i}">${esc(f.name)}</button>
+        <span class="muted small">${new Date(f.mod).toLocaleDateString('fi-FI')}</span></li>`).join('')
+    : `<li class="muted">Kansiossa ${esc(folder)} ei ole laskuja.</li>`;
+  ul.onclick = async (e) => {
+    const i = e.target.dataset.f;
+    if (i !== undefined) openBlob(await files[i].handle.getFile());
+  };
 }
-$('btnRefreshArchive').onclick = () => refreshArchive();
+$('archiveYear').onchange = () => refreshArchive();
+
+function renderLocalArchive() {
+  const ul = $('archiveList');
+  $('archiveYear').hidden = true;
+  const log = (STATE.log || []).slice().reverse();
+  ul.innerHTML = '<li class="muted small">Puhelimella tehdyt laskut löytyvät OneDrivesta. Alla tällä laitteella luodut:</li>' +
+    (log.length
+      ? log.map(l => `<li><span>${esc(l.nro)} · ${esc(l.asiakas)}</span>
+          <span class="muted small">${INV.dateFi(l.pvm)} · ${INV.money(l.summa)}</span></li>`).join('')
+      : '<li class="muted">Ei laskuja.</li>');
+}
 
 /* ===================================================================== */
 /* Asetukset                                                             */
 /* ===================================================================== */
 const SET_MAP = {
-  cfgClientId: 'clientId', cfgTenant: 'tenant', cfgRegFolder: 'regFolder', cfgOutFolder: 'outFolder',
-  cfgYearFolders: 'yearFolders', cfgFilePattern: 'filePattern', cfgNextNumber: 'nextNumber',
-  cfgSharedCounter: 'sharedCounter', cfgTerms: 'terms', cfgInterest: 'interest', cfgVat: 'vat',
-  cfgMailSubject: 'mailSubject', cfgMailBody: 'mailBody', cfgMailCc: 'mailCc', cfgMailDraft: 'mailDraft'
-};
-const SENDER_MAP = {
-  cfgSenderName: 'name', cfgSenderBid: 'bid', cfgSenderAddr: 'addr', cfgSenderZip: 'zip', cfgSenderCity: 'city',
-  cfgSenderEmail: 'email', cfgSenderPhone: 'phone', cfgIban: 'iban', cfgBic: 'bic'
+  cfgRegFile: 'regFile', cfgOutFolder: 'outFolder', cfgYearFolders: 'yearFolders',
+  cfgFilePattern: 'filePattern', cfgMailSubject: 'mailSubject', cfgMailBody: 'mailBody'
 };
 
 function fillSettings() {
   for (const [id, key] of Object.entries(SET_MAP)) {
-    const el = $(id); if (!el) continue;
+    const el = $(id);
     if (el.type === 'checkbox') el.checked = !!cfg[key]; else el.value = cfg[key] ?? '';
   }
-  for (const [id, key] of Object.entries(SENDER_MAP)) {
-    const el = $(id); if (el) el.value = cfg.sender[key] ?? '';
-  }
-  $('regFolder').value = cfg.regFolder || '';
-  if (cfg.regFile && $('regFile').options.length <= 1) {
-    $('regFile').innerHTML = `<option value="${cfg.regFile}">${cfg.regFile}</option>`;
-    $('regFile').value = cfg.regFile;
-  }
+  $('cfgRegFile').closest('label').hidden = ST.mode !== 'folder';
+  const own = !!localStorage.getItem(LOGO_KEY);
+  $('logoInfo').textContent = own
+    ? 'Laskuilla käytetään tällä laitteella valittua logoa.'
+    : (ST.mode === 'folder'
+      ? 'Logo luetaan Laskutus-kansiosta Laskuttajarekisterin kohdasta "Logo tiedostonimi". Voit myös valita logon tälle laitteelle.'
+      : 'Valitse logo tälle laitteelle (PNG tai JPG). Ilman logoa laskuttajan nimi näkyy otsikkona.');
+  $('btnLogoClear').hidden = !own;
 }
 
 function readSettings() {
   for (const [id, key] of Object.entries(SET_MAP)) {
-    const el = $(id); if (!el) continue;
-    cfg[key] = el.type === 'checkbox' ? el.checked : (el.type === 'number' ? numVal(el.value) : el.value.trim());
+    const el = $(id);
+    cfg[key] = el.type === 'checkbox' ? el.checked : el.value.trim();
   }
-  for (const [id, key] of Object.entries(SENDER_MAP)) {
-    const el = $(id); if (el) cfg.sender[key] = el.value.trim();
-  }
+  cfg.outFolder = (cfg.outFolder || 'Laskut').replace(/^\/+|\/+$/g, '');
+  if (!cfg.filePattern.includes('{nro}')) cfg.filePattern = 'Lasku_{nro}_' + cfg.filePattern;
   CFG.save();
 }
 
-function openSettings(open) {
-  $('settingsPanel').hidden = !open;
-  $('settingsBackdrop').hidden = !open;
-  if (open) fillSettings();
-}
-$('btnSettings').onclick = () => openSettings(true);
-$('btnCloseSettings').onclick = () => openSettings(false);
-$('settingsBackdrop').onclick = () => openSettings(false);
-
+$('btnSettings').onclick = () => { fillSettings(); $('settingsDialog').showModal(); };
+$('btnCloseSettings').onclick = () => $('settingsDialog').close();
 $('btnSaveCfg').onclick = async () => {
+  const oldReg = cfg.regFile;
   readSettings();
-  $('maksuehto').value = cfg.terms || 14;
-  updateDue();
-  openSettings(false);
+  $('settingsDialog').close();
   status('Asetukset tallennettu.', 'ok');
-  if (cfg.clientId) { try { await initGraph(); } catch (e) { status(e.message, 'err'); } }
+  if (ST.mode === 'folder' && READY) {
+    if (oldReg !== cfg.regFile) { await listRegistryFiles(); await loadRegistryFromFolder(); }
+    await suggestNumber();
+    refreshArchive().catch(() => {});
+  }
 };
-
 $('btnResetCfg').onclick = () => {
   if (!confirm('Palautetaanko oletusasetukset?')) return;
   CFG.reset();
-  Object.assign(cfg, CFG.data);
   fillSettings();
 };
 
-/* ===================================================================== */
-/* Kirjautuminen                                                         */
-/* ===================================================================== */
-async function initGraph() {
-  if (!cfg.clientId) { conn('Anna Client ID asetuksissa'); return; }
-  await G.init(cfg.clientId, cfg.tenant);
-  await G.handleRedirect();
-  if (G.signedIn()) await afterLogin();
-  else conn('Ei kirjautunut');
-}
-
-async function afterLogin() {
-  try {
-    const me = await G.me();
-    conn('Yhdistetty: ' + (me.displayName || me.userPrincipalName), true);
-    $('userInfo').textContent = (me.mail || me.userPrincipalName || '');
-    await loadCounter();
-    if (!$('laskunro').value) newInvoiceNumber();
-    if (cfg.regFolder && cfg.regFile) {
-      try {
-        const buf = await G.downloadFile(cfg.regFolder + '/' + cfg.regFile);
-        parseWorkbook(buf, 'OneDrive: ' + cfg.regFolder + '/' + cfg.regFile);
-        newInvoiceNumber();
-      } catch (e) { console.warn('Rekisterin automaattilataus:', e.message); }
-    }
-    refreshArchive().catch(() => {});
-  } catch (e) {
-    conn('Kirjautunut (Graph-virhe: ' + e.message + ')');
-  }
-}
-
-$('btnLogin').onclick = async () => {
-  try {
-    readSettings();
-    if (!cfg.clientId) { alert('Anna ensin sovelluksen Client ID.'); return; }
-    if (!G.msal) await G.init(cfg.clientId, cfg.tenant);
-    await G.login();
-    if (G.signedIn()) { await afterLogin(); openSettings(false); status('Kirjautuminen onnistui.', 'ok'); }
-  } catch (e) { alert('Kirjautuminen epäonnistui: ' + e.message); }
+$('logoInput').onchange = (e) => {
+  const f = e.target.files[0];
+  if (!f) return;
+  if (f.size > 600 * 1024) { alert('Logo on liian suuri (max 600 kt). Pienennä kuvaa.'); return; }
+  const r = new FileReader();
+  r.onload = () => {
+    try { localStorage.setItem(LOGO_KEY, r.result); fillSettings(); }
+    catch (_) { alert('Logon tallennus epäonnistui (tila täynnä).'); }
+  };
+  r.readAsDataURL(f);
+  e.target.value = '';
 };
-
-$('btnLogout').onclick = async () => {
-  await G.logout();
-  conn('Ei yhteyttä OneDriveen');
-  $('userInfo').textContent = 'Ei kirjautunut.';
-};
+$('btnLogoClear').onclick = () => { localStorage.removeItem(LOGO_KEY); fillSettings(); };
 
 /* ===================================================================== */
 /* Välilehdet ja käynnistys                                              */
 /* ===================================================================== */
-document.querySelectorAll('.tab').forEach(t => {
-  t.onclick = () => {
-    document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
-    document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
-    t.classList.add('active');
-    $(t.dataset.view).classList.add('active');
-    if (t.dataset.view === 'arkistoView') refreshArchive().catch(() => {});
-  };
-});
+function showView(id) {
+  document.querySelectorAll('.tab').forEach(x => x.classList.toggle('active', x.dataset.view === id));
+  document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.id === id));
+  if (id === 'arkistoView') refreshArchive().catch(() => {});
+}
+document.querySelectorAll('.tab').forEach(t => { t.onclick = () => showView(t.dataset.view); });
 
 $('btnAddRow').onclick = () => addRow();
 $('asiakas').onchange = onCustomerChange;
+$('laskuttaja').onchange = () => { ROWS.forEach(r => { if (r.product === '') r.vat = defaultVat(); }); renderRows(); applyBiller(); };
 $('laskupvm').onchange = updateDue;
 $('maksuehto').oninput = updateDue;
 $('laskunro').oninput = updateRef;
 
-(function start() {
-  fillSettings();
+(async function start() {
+  if (typeof XLSX === 'undefined' || !window.jspdf) {
+    status('Ohjelmakirjastoja ei saatu ladattua. Tarkista verkkoyhteys ja päivitä sivu.', 'err');
+  }
   $('laskupvm').value = INV.today();
-  $('maksuehto').value = cfg.terms || 14;
+  $('maksuehto').value = 14;
   updateDue();
-  newInvoiceNumber();
   addRow();
-  initGraph().catch(e => conn('Yhteysvirhe: ' + e.message));
+
+  $('folderMode').hidden = ST.mode !== 'folder';
+  $('fileMode').hidden = ST.mode !== 'file';
+
+  if (ST.mode === 'folder') {
+    await ST.restore();
+    if (ST.dir) $('folderName').textContent = ST.folderName();
+    await connectFolder();
+  } else {
+    await loadState();
+    try {
+      const cached = JSON.parse(localStorage.getItem(REG_CACHE) || 'null');
+      if (cached && (cached.customers || cached.billers)) {
+        REG = cached;
+        $('fileName').textContent = cached.source;
+        fillRegistry();
+      } else showSetup('file');
+    } catch (_) { showSetup('file'); }
+    renderLocalArchive();
+  }
 })();

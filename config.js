@@ -1,53 +1,35 @@
-/* config.js – asetusten oletukset ja tallennus (localStorage) */
+/* config.js – asetusten oletukset ja tallennus (localStorage, laitekohtainen) */
 
-const CFG_KEY = 'laskutus.cfg.v1';
+const CFG_KEY = 'laskutus.cfg.v3';
 
 const DEFAULT_CFG = {
-  clientId: '',                       // Azure-sovelluksen (client) ID
-  tenant: 'common',                   // common | organizations | tenant-id
-  regFolder: 'Dokumentit/Laskutus',   // kansio jossa rekisteri-Excel sijaitsee
-  regFile: '',                        // valittu rekisteritiedosto
-  outFolder: 'Dokumentit/Laskutus/Laskut',
-  yearFolders: true,
+  regFile: 'Laskutus-rekisteri.xlsx',      // rekisteri Laskutus-kansiossa
+  outFolder: 'Laskut',                     // laskujen alikansio Laskutus-kansiossa
+  yearFolders: true,                       // Laskut/2026/...
   filePattern: 'Lasku_{nro}_{asiakas}.pdf',
-  nextNumber: 1001,
-  sharedCounter: true,                // laskunumero OneDriveen (laskutus-tila.json)
-  terms: 14,
-  interest: '8 %',
-  vat: 25.5,
-  mailSubject: 'Lasku {nro} / {lahettaja}',
+  mailSubject: 'Lasku {nro} / {laskuttaja}',
   mailBody:
-    'Hei,\n\nohessa lasku {nro}. Eräpäivä on {erapaiva} ja loppusumma {summa}.\n' +
-    'Käytäthän maksaessasi viitenumeroa {viite}.\n\nYstävällisin terveisin\n{lahettaja}',
-  mailCc: '',
-  mailDraft: false,
-  sender: {
-    name:'', bid:'', addr:'', zip:'', city:'',
-    email:'', phone:'', iban:'', bic:'', bank:'', country:'Suomi'
-  }
+    'Hei,\n\nohessa lasku {nro}. Eräpäivä on {erapaiva} ja maksettava summa {summa}.\n' +
+    'Käytäthän maksaessasi viitenumeroa {viite}.\n\nYstävällisin terveisin\n{laskuttaja}',
+  lastBiller: ''
 };
 
 const CFG = {
-  data: structuredClone(DEFAULT_CFG),
+  data: { ...DEFAULT_CFG },
 
   load() {
     try {
-      const raw = localStorage.getItem(CFG_KEY);
-      if (raw) {
-        const saved = JSON.parse(raw);
-        this.data = Object.assign(structuredClone(DEFAULT_CFG), saved);
-        this.data.sender = Object.assign(structuredClone(DEFAULT_CFG.sender), saved.sender || {});
-      }
+      const saved = JSON.parse(localStorage.getItem(CFG_KEY) || '{}');
+      Object.assign(this.data, DEFAULT_CFG, saved);
     } catch (e) { console.warn('Asetusten luku epäonnistui', e); }
     return this.data;
   },
 
-  save() {
-    localStorage.setItem(CFG_KEY, JSON.stringify(this.data));
-  },
+  save() { localStorage.setItem(CFG_KEY, JSON.stringify(this.data)); },
 
   reset() {
-    this.data = structuredClone(DEFAULT_CFG);
+    Object.keys(this.data).forEach(k => delete this.data[k]);
+    Object.assign(this.data, DEFAULT_CFG);
     this.save();
   }
 };

@@ -3,11 +3,15 @@
 const INV = {
 
   /* ---------- muotoilut ---------- */
-  money(n) {
-    return (Number(n) || 0).toLocaleString('fi-FI', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
+  money(n, cur) {
+    const s = (Number(n) || 0).toLocaleString('fi-FI', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return s + (cur && cur.toUpperCase() !== 'EUR' ? ' ' + cur.toUpperCase() : ' €');
   },
   num(n, d = 2) {
     return (Number(n) || 0).toLocaleString('fi-FI', { minimumFractionDigits: 0, maximumFractionDigits: d });
+  },
+  price(n) {
+    return (Number(n) || 0).toLocaleString('fi-FI', { minimumFractionDigits: 2, maximumFractionDigits: 4 });
   },
   dateFi(iso) {
     if (!iso) return '';
@@ -15,214 +19,213 @@ const INV = {
     return `${Number(d)}.${Number(m)}.${y}`;
   },
   addDays(iso, days) {
-    const d = new Date(iso + 'T12:00:00');
+    const d = new Date((iso || this.today()) + 'T12:00:00');
     d.setDate(d.getDate() + Number(days || 0));
-    return d.toISOString().slice(0, 10);
+    return this.iso(d);
   },
-  today() { return new Date().toISOString().slice(0, 10); },
+  iso(d) {
+    const p = (x) => String(x).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  },
+  today() { return this.iso(new Date()); },
 
-  /* ---------- suomalainen viitenumero ---------- */
+  /* ---------- suomalainen viitenumero (7-3-1) ---------- */
   reference(base) {
-    const digits = String(base).replace(/\D/g, '').replace(/^0+/, '') || '1';
-    const body = digits.slice(-19);
+    const digits = String(base).replace(/\D/g, '').replace(/^0+/, '');
+    const body = (digits.length < 3 ? '100' + digits : digits).slice(-19);   // vähintään 3 numeroa
     const w = [7, 3, 1];
     let sum = 0;
-    for (let i = 0; i < body.length; i++) {
-      sum += Number(body[body.length - 1 - i]) * w[i % 3];
-    }
-    const check = (10 - (sum % 10)) % 10;
-    const full = body + check;
+    for (let i = 0; i < body.length; i++) sum += Number(body[body.length - 1 - i]) * w[i % 3];
+    const full = body + ((10 - (sum % 10)) % 10);
     return full.replace(/\B(?=(\d{5})+(?!\d))/g, ' ');
   },
 
   /* ---------- summat ---------- */
+  lineTotal(l) {
+    return Math.round((Number(l.qty) || 0) * (Number(l.price) || 0) * 100) / 100;
+  },
+
   totals(lines) {
     let net = 0, vat = 0;
     const byRate = {};
     for (const l of lines) {
-      const q = Number(l.qty) || 0, p = Number(l.price) || 0, r = Number(l.vat) || 0;
-      const n = Math.round(q * p * 100) / 100;
-      const v = Math.round(n * r) / 100;
-      net += n; vat += v;
+      const n = this.lineTotal(l);
+      const r = Number(l.vat) || 0;
       byRate[r] = byRate[r] || { net: 0, vat: 0 };
-      byRate[r].net += n; byRate[r].vat += v;
+      byRate[r].net += n;
+      net += n;
+    }
+    for (const r of Object.keys(byRate)) {
+      byRate[r].vat = Math.round(byRate[r].net * Number(r)) / 100;
+      vat += byRate[r].vat;
     }
     net = Math.round(net * 100) / 100;
     vat = Math.round(vat * 100) / 100;
     return { net, vat, gross: Math.round((net + vat) * 100) / 100, byRate };
   },
 
-  lineTotal(l) {
-    const n = (Number(l.qty) || 0) * (Number(l.price) || 0);
-    return Math.round(n * 100) / 100;
-  },
-
   /* ---------- PDF ---------- */
   buildPdf(inv) {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ unit: 'mm', format: 'a4' });
-    const L = 16, R = 194, brand = [15, 118, 110], ink = [20, 35, 32], grey = [110, 130, 126];
+    const L = 16, R = 194;
+    const green = [46, 125, 50], greenD = [27, 94, 32], ink = [33, 33, 33], grey = [110, 110, 110];
+    const s = inv.sender, c = inv.customer, cur = s.currency;
     const t = this.totals(inv.lines);
-    let y = 0;
+    let y;
 
-    const text = (s, x, yy, o = {}) => doc.text(String(s ?? ''), x, yy, o);
-    const setF = (size, style = 'normal', color = ink) => {
+    const text = (str, x, yy, o = {}) => doc.text(String(str ?? ''), x, yy, o);
+    const font = (size, style = 'normal', color = ink) => {
       doc.setFont('helvetica', style); doc.setFontSize(size); doc.setTextColor(...color);
     };
 
     /* --- ylätunniste --- */
-    doc.setFillColor(...brand);
-    doc.rect(0, 0, 210, 26, 'F');
-    setF(17, 'bold', [255, 255, 255]);
-    text(inv.sender.name || 'Lasku', L, 15);
-    setF(9, 'normal', [255, 255, 255]);
-    text('LASKU', R, 11, { align: 'right' });
-    setF(13, 'bold', [255, 255, 255]);
-    text(inv.number, R, 18, { align: 'right' });
+    let logoOk = false;
+    if (s.logoData) {
+      try {
+        const p = doc.getImageProperties(s.logoData);
+        const maxW = 50, maxH = 18;
+        const k = Math.min(maxW / p.width, maxH / p.height);
+        doc.addImage(s.logoData, L, 10, p.width * k, p.height * k);
+        logoOk = true;
+      } catch (e) { console.warn('Logoa ei voitu lisätä', e); }
+    }
+    if (!logoOk) {
+      font(16, 'bold', greenD);
+      text(s.name || '', L, 20);
+    }
+    font(20, 'bold', green);
+    text('LASKU', R, 17, { align: 'right' });
+    font(11, 'normal', ink);
+    text(inv.number, R, 24, { align: 'right' });
+    doc.setDrawColor(...green); doc.setLineWidth(0.8);
+    doc.line(L, 31, R, 31);
+    doc.setLineWidth(0.2);
 
-    /* --- osoitelohkot --- */
+    /* --- osoitteet --- */
     y = 40;
-    setF(8, 'bold', grey); text('LASKUTTAJA', L, y);
-    setF(9.5, 'normal', ink);
-    const s = inv.sender;
-    const senderLines = [
-      s.name, s.addr, [s.zip, s.city].filter(Boolean).join(' '),
-      s.bid ? 'Y-tunnus ' + s.bid : '', s.email, s.phone
-    ].filter(Boolean);
-    let sy = y + 5;
-    senderLines.forEach(l => { text(l, L, sy); sy += 4.4; });
+    font(7.5, 'bold', grey); text('LASKUTTAJA', L, y); text('VASTAANOTTAJA', 110, y);
+    font(10, 'normal', ink);
+    const foreign = (cn) => cn && !/^(suomi|finland|fi)$/i.test(cn.trim());
+    const sLines = [s.name, s.addr, [s.zip, s.city].filter(Boolean).join(' '), foreign(s.country) ? s.country : ''].filter(Boolean);
+    const cLines = [c.name, c.recipient, c.addr, [c.zip, c.city].filter(Boolean).join(' '), foreign(c.country) ? c.country : ''].filter(Boolean);
+    let sy = y + 5.5, cy = y + 5.5;
+    sLines.forEach(l => { text(l, L, sy); sy += 4.8; });
+    cLines.forEach((l, i) => { font(10, i === 0 ? 'bold' : 'normal', ink); text(l, 110, cy); cy += 4.8; });
 
-    setF(8, 'bold', grey); text('VASTAANOTTAJA', 110, y);
-    setF(9.5, 'normal', ink);
-    const c = inv.customer;
-    const custLines = [
-      c.name, c.addr, [c.zip, c.city].filter(Boolean).join(' '),
-      c.country && c.country.toLowerCase() !== 'suomi' ? c.country : '',
-      c.bid ? 'Y-tunnus ' + c.bid : ''
-    ].filter(Boolean);
-    let cy = y + 5;
-    custLines.forEach(l => { text(l, 110, cy); cy += 4.4; });
-
-    /* --- laskun perustiedot --- */
-    y = Math.max(sy, cy) + 6;
-    doc.setDrawColor(219, 232, 229); doc.line(L, y, R, y);
-    y += 6;
+    /* --- perustiedot --- */
+    y = Math.max(sy, cy) + 5;
+    doc.setFillColor(232, 245, 233);
     const meta = [
       ['Laskun päivä', this.dateFi(inv.date)],
       ['Eräpäivä', this.dateFi(inv.due)],
       ['Maksuehto', (inv.terms || 0) + ' pv netto'],
       ['Viitenumero', inv.reference],
-      ['Viivästyskorko', inv.interest || ''],
+      ['Viivästyskorko', s.interest],
       ['Toimituspäivä', this.dateFi(inv.deliveryDate)],
-      ['Asiakasnumero', c.id || '']
-    ].filter(r => r[1] !== '' && r[1] !== undefined);
-
-    const colX = [L, 75, 140];
+      ['Asiakasnumero', c.id],
+      ['Asiakkaan Y-tunnus', c.bid],
+      ['Myyjänro', s.sellerNo],
+      ['Verkkolaskuosoite', c.einv],
+      ['Välittäjä', c.operator]
+    ].filter(r => r[1]);
+    const rowsN = Math.ceil(meta.length / 3);
+    doc.rect(L - 2, y - 4, R - L + 4, rowsN * 10 + 3, 'F');
     meta.forEach((m, i) => {
-      const x = colX[i % 3], ry = y + Math.floor(i / 3) * 10;
-      setF(7.5, 'bold', grey); text(m[0].toUpperCase(), x, ry);
-      setF(10, 'normal', ink); text(m[1], x, ry + 4.6);
+      const x = L + (i % 3) * 61, ry = y + Math.floor(i / 3) * 10;
+      font(7, 'bold', grey); text(m[0].toUpperCase(), x, ry);
+      font(10, 'normal', ink); text(m[1], x, ry + 4.5);
     });
-    y += Math.ceil(meta.length / 3) * 10 + 4;
+    y += rowsN * 10 + 8;
 
-    /* --- rivitaulukko --- */
-    const cx = { desc: L, qty: 118, unit: 121, price: 152, vat: 168, tot: R };
+    /* --- laskurivit --- */
+    const X = { desc: L, qty: 116, unit: 119, price: 152, vat: 167, tot: R };
     const header = () => {
-      doc.setFillColor(230, 243, 241);
-      doc.rect(L - 2, y - 5, R - L + 4, 7.5, 'F');
-      setF(7.5, 'bold', [11, 90, 84]);
-      text('KUVAUS', cx.desc, y);
-      text('MÄÄRÄ', cx.qty, y, { align: 'right' });
-      text('YKS.', cx.unit, y);
-      text('À-HINTA', cx.price, y, { align: 'right' });
-      text('ALV%', cx.vat, y, { align: 'right' });
-      text('YHTEENSÄ', cx.tot, y, { align: 'right' });
-      y += 7;
+      font(7.5, 'bold', greenD);
+      text('TUOTE', X.desc, y);
+      text('MÄÄRÄ', X.qty, y, { align: 'right' });
+      text('YKS.', X.unit, y);
+      text('HINTA, ALV 0 %', X.price, y, { align: 'right' });
+      text('ALV %', X.vat, y, { align: 'right' });
+      text('YHTEENSÄ', X.tot, y, { align: 'right' });
+      doc.setDrawColor(...green); doc.line(L, y + 2, R, y + 2);
+      y += 7.5;
     };
-    y += 5; header();
-
-    setF(9.5, 'normal', ink);
+    header();
     for (const l of inv.lines) {
-      if (y > 245) { doc.addPage(); y = 25; header(); setF(9.5, 'normal', ink); }
-      const descLines = doc.splitTextToSize(l.desc || '', 96);
-      setF(9.5, 'normal', ink);
-      text(descLines[0] || '', cx.desc, y);
-      text(this.num(l.qty, 3), cx.qty, y, { align: 'right' });
-      text(l.unit || '', cx.unit, y);
-      text(this.num(l.price), cx.price, y, { align: 'right' });
-      text(this.num(l.vat, 1), cx.vat, y, { align: 'right' });
-      setF(9.5, 'bold', ink);
-      text(this.num(this.lineTotal(l)), cx.tot, y, { align: 'right' });
-      let ly = y;
-      if (descLines.length > 1) {
-        setF(8.5, 'normal', grey);
-        for (let i = 1; i < descLines.length; i++) { ly += 4; text(descLines[i], cx.desc, ly); }
-      }
-      y = ly + 4;
-      doc.setDrawColor(240, 245, 244); doc.line(L, y - 2.2, R, y - 2.2);
-      y += 2;
+      const desc = doc.splitTextToSize(String(l.desc || ''), 95);
+      const need = desc.length * 4.6 + 3;
+      if (y + need > 240) { doc.addPage(); y = 22; header(); }
+      font(10, 'normal', ink);
+      desc.forEach((d, i) => text(d, X.desc, y + i * 4.6));
+      text(this.num(l.qty, 3), X.qty, y, { align: 'right' });
+      text(l.unit || '', X.unit, y);
+      text(this.price(l.price), X.price, y, { align: 'right' });
+      text(this.num(l.vat, 1), X.vat, y, { align: 'right' });
+      font(10, 'bold', ink);
+      text(this.money(this.lineTotal(l), cur).replace(/ (€|[A-Z]{3})$/, ''), X.tot, y, { align: 'right' });
+      y += desc.length * 4.6;
+      doc.setDrawColor(224, 224, 224); doc.line(L, y - 1.8, R, y - 1.8);
+      y += 2.4;
     }
 
-    /* --- summat --- */
-    if (y > 225) { doc.addPage(); y = 25; }
+    /* --- yhteenveto --- */
+    const rates = Object.keys(t.byRate).sort((a, b) => a - b);
+    const sumH = 10 + rates.length * 5.5 + 12 + (inv.note ? 14 : 0);
+    if (y + sumH > 240) { doc.addPage(); y = 22; }
     y += 4;
-    const sumRow = (label, val, bold = false, size = 10) => {
-      setF(size, bold ? 'bold' : 'normal', bold ? ink : grey);
-      text(label, 140, y, { align: 'right' });
-      setF(size, bold ? 'bold' : 'normal', ink);
-      text(val, R, y, { align: 'right' });
-      y += size * 0.62;
+    const sumRow = (label, val) => {
+      font(10, 'normal', grey); text(label, 152, y, { align: 'right' });
+      font(10, 'normal', ink); text(val, R, y, { align: 'right' });
+      y += 5.5;
     };
-    sumRow('Veroton yhteensä', this.money(t.net));
-    Object.keys(t.byRate).sort((a, b) => a - b).forEach(r => {
-      sumRow(`ALV ${this.num(r, 1)} %`, this.money(t.byRate[r].vat));
-    });
-    y += 2;
-    doc.setDrawColor(...brand); doc.setLineWidth(0.5); doc.line(118, y - 4, R, y - 4);
-    doc.setLineWidth(0.2);
-    y += 2;
-    setF(12, 'bold', brand);
-    text('MAKSETTAVA', 140, y, { align: 'right' });
-    text(this.money(t.gross), R, y, { align: 'right' });
+    sumRow('Veroton yhteensä', this.money(t.net, cur));
+    rates.forEach(r => sumRow(`ALV ${this.num(r, 1)} % (${this.money(t.byRate[r].net, cur)})`, this.money(t.byRate[r].vat, cur)));
+    doc.setDrawColor(...green); doc.setLineWidth(0.6); doc.line(110, y - 2, R, y - 2); doc.setLineWidth(0.2);
+    y += 4;
+    font(13, 'bold', greenD);
+    text('MAKSETTAVA', 152, y, { align: 'right' });
+    text(this.money(t.gross, cur), R, y, { align: 'right' });
     y += 10;
-
-    /* --- vapaa teksti --- */
     if (inv.note) {
-      setF(9.5, 'normal', ink);
-      const nl = doc.splitTextToSize(inv.note, R - L);
-      nl.forEach(l => { text(l, L, y); y += 4.6; });
-      y += 4;
+      font(10, 'normal', ink);
+      doc.splitTextToSize(inv.note, R - L).slice(0, 3).forEach(l => { text(l, L, y); y += 4.8; });
     }
 
-    /* --- maksutiedot alareunaan --- */
-    const py = 262;
-    doc.setFillColor(243, 247, 246);
-    doc.rect(0, py - 8, 210, 42, 'F');
-    setF(8, 'bold', grey); text('MAKSUTIEDOT', L, py - 2);
-    setF(9.5, 'normal', ink);
+    /* --- maksutiedot (viimeinen sivu) --- */
+    const py = 247;
+    doc.setFillColor(232, 245, 233);
+    doc.rect(0, py - 6, 210, 31, 'F');
+    const accounts = [[s.iban, s.bic, s.bank], [s.iban2, s.bic2, s.bank2]].filter(a => a[0]);
     const pay = [
       ['Saaja', s.name],
-      ['IBAN', s.iban],
-      ['BIC', s.bic],
       ['Viitenumero', inv.reference],
       ['Eräpäivä', this.dateFi(inv.due)],
-      ['Summa', this.money(t.gross)]
+      ...accounts.map((a, i) => [`Tilinumero${accounts.length > 1 ? ' ' + (i + 1) : ''}${a[2] ? ' – ' + a[2] : ''}`,
+        a[0] + (a[1] ? '  BIC ' + a[1] : '')]),
+      ['Maksettava', this.money(t.gross, cur)]
     ];
     pay.forEach((p, i) => {
-      const x = L + (i % 3) * 62, ry = py + 5 + Math.floor(i / 3) * 10;
-      setF(7.5, 'bold', grey); text(p[0].toUpperCase(), x, ry);
-      setF(10, 'normal', ink); text(p[1] || '-', x, ry + 4.6);
+      const x = L + (i % 3) * 61, ry = py + Math.floor(i / 3) * 11;
+      font(7, 'bold', grey); text(p[0].toUpperCase(), x, ry);
+      font(i === pay.length - 1 ? 11 : 10, i === pay.length - 1 ? 'bold' : 'normal', ink);
+      text(p[1] || '–', x, ry + 4.6);
     });
 
-    /* --- sivunumerot --- */
+    /* --- alatunniste kaikille sivuille --- */
+    const col1 = [s.name, s.addr, [s.zip, s.city].filter(Boolean).join(' ')].filter(Boolean);
+    const col2 = [s.phone && 'Puh. ' + s.phone, s.phone2 && 'Puh. ' + s.phone2, s.email, s.web].filter(Boolean);
+    const col3 = [s.bid && 'Y-tunnus ' + s.bid, s.vatId && 'ALV-nro ' + s.vatId, s.tradeNo && 'Kaupparek. ' + s.tradeNo].filter(Boolean);
     const pages = doc.getNumberOfPages();
     for (let i = 1; i <= pages; i++) {
       doc.setPage(i);
-      setF(7.5, 'normal', grey);
-      text(`${s.name || ''}${s.bid ? ' · Y-tunnus ' + s.bid : ''}`, L, 290);
-      text(`Sivu ${i}/${pages}`, R, 290, { align: 'right' });
+      doc.setDrawColor(...green); doc.line(L, 280, R, 280);
+      font(7.5, 'normal', grey);
+      col1.forEach((l, k) => text(l, L, 284 + k * 3.4));
+      col2.forEach((l, k) => text(l, 80, 284 + k * 3.4));
+      col3.forEach((l, k) => text(l, 140, 284 + k * 3.4));
+      if (pages > 1) text(`${i}/${pages}`, R, 276, { align: 'right' });
     }
-
     return doc;
   }
 };
