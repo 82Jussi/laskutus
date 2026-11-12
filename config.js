@@ -7,6 +7,9 @@ const DEFAULT_CFG = {
   outFolder: 'Laskut',                     // laskujen alikansio Laskutus-kansiossa
   yearFolders: true,                       // Laskut/2026/...
   filePattern: 'Lasku_{nro}_{asiakas}.pdf',
+  pdfStyle: 'bw',                          // 'bw' = mustavalkoinen, 'color' = korostusväri
+  pdfColor: '#2e7d32',
+  barcode: true,                           // pankkiviivakoodi + virtuaaliviivakoodi
   mailSubject: 'Lasku {nro} / {laskuttaja}',
   mailBody:
     'Hei,\n\nohessa lasku {nro}. Eräpäivä on {erapaiva} ja maksettava summa {summa}.\n' +

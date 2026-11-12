@@ -51,6 +51,62 @@ function nowFi() {
   return new Date().toLocaleString('fi-FI', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 const isTouch = () => matchMedia('(pointer:coarse)').matches;
+function pdfOpts() {
+  return { style: cfg.pdfStyle, color: cfg.pdfColor, barcode: cfg.barcode !== false };
+}
+
+/* ===================================================================== */
+/* Päivämäärät: kentät muodossa pp.kk.vvvv, sisäisesti ISO               */
+/* ===================================================================== */
+const DATE_IDS = ['laskupvm', 'erapvm', 'toimituspvm'];
+
+/* ISO tai '' (tyhjä tai virheellinen) */
+function getD(id) {
+  const v = INV.parseFi($(id).value);
+  return v || '';
+}
+function setD(id, iso) {
+  $(id).value = iso ? INV.dateFi(iso) : '';
+  $(id).classList.remove('invalid');
+  const p = document.querySelector(`.dpick[data-for="${id}"]`);
+  if (p) p.value = iso || '';
+}
+/* Tarkistaa ja muotoilee kentän; palauttaa ISO, '' tai null (virhe) */
+function normalizeD(id) {
+  const el = $(id);
+  const v = INV.parseFi(el.value);
+  if (v === null) { el.classList.add('invalid'); return null; }
+  setD(id, v);
+  return v;
+}
+function onDateChanged(id) {
+  if (id === 'laskupvm') updateDue();
+  if (id === 'erapvm') {
+    const a = getD('laskupvm'), b = getD('erapvm');
+    if (a && b) $('maksuehto').value = Math.max(0, INV.daysBetween(a, b));
+  }
+}
+function initDateFields() {
+  DATE_IDS.forEach(id => {
+    const el = $(id);
+    el.addEventListener('change', () => {
+      if (normalizeD(id) === null) status('Tarkista päivämäärä – muoto pp.kk.vvvv.', 'err');
+      else { status(''); onDateChanged(id); }
+    });
+    el.addEventListener('input', () => el.classList.remove('invalid'));
+  });
+  document.querySelectorAll('.dpick').forEach(p => {
+    p.addEventListener('click', () => {
+      p.value = getD(p.dataset.for) || '';
+      try { if (p.showPicker) p.showPicker(); } catch (_) { /* puhelin avaa valitsimen itse */ }
+    });
+    p.addEventListener('change', () => {
+      if (!p.value) return;
+      setD(p.dataset.for, p.value);
+      onDateChanged(p.dataset.for);
+    });
+  });
+}
 
 /* ===================================================================== */
 /* Rekisterin luku                                                       */
@@ -277,7 +333,6 @@ async function applyBiller() {
   cfg.lastBiller = billerKey(b); CFG.save();
   const c = currentCustomer();
   $('maksuehto').value = (c && c.terms) || b.terms || 14;
-  $('vapaateksti').value = b.note || '';
   updateDue();
   await suggestNumber();
   calc();
@@ -385,7 +440,7 @@ function calc() {
 /* Laskun tiedot                                                         */
 /* ===================================================================== */
 function updateDue() {
-  $('erapvm').value = INV.addDays($('laskupvm').value || INV.today(), num($('maksuehto').value));
+  setD('erapvm', INV.addDays(getD('laskupvm') || INV.today(), num($('maksuehto').value)));
 }
 function updateRef() {
   $('viite').value = INV.reference($('laskunro').value || '1');
@@ -411,11 +466,11 @@ function buildInvoice(logoData = '') {
   const b = currentBiller() || {};
   return {
     number: $('laskunro').value.trim(),
-    date: $('laskupvm').value || INV.today(),
-    due: $('erapvm').value,
+    date: getD('laskupvm') || INV.today(),
+    due: getD('erapvm'),
     terms: num($('maksuehto').value),
     reference: $('viite').value,
-    deliveryDate: $('toimituspvm').value,
+    deliveryDate: getD('toimituspvm'),
     note: $('vapaateksti').value.trim(),
     sender: { ...b, logoData },
     customer: currentCustomer() || {},
@@ -425,6 +480,9 @@ function buildInvoice(logoData = '') {
 }
 
 function validate(inv) {
+  for (const id of DATE_IDS) {
+    if (normalizeD(id) === null) return 'Tarkista päivämäärä (muoto pp.kk.vvvv).';
+  }
   if (!REG.billers.length) return 'Lataa ensin rekisteri (Laskuttajarekisteri puuttuu).';
   if (!inv.customer.name) return 'Valitse asiakas.';
   if (!inv.lines.length) return 'Lisää vähintään yksi laskurivi.';
@@ -451,13 +509,15 @@ function outFolderFor(inv) {
 
 function mailTexts(inv) {
   const t = INV.totals(inv.lines);
+  const vcode = INV.virtualBarcode(inv.sender.iban, t.gross, inv.reference, inv.due, inv.sender.currency);
   const rep = (s) => String(s || '')
     .replace(/\{nro\}/g, inv.number)
     .replace(/\{laskuttaja\}/g, inv.sender.name || '')
     .replace(/\{asiakas\}/g, inv.customer.name || '')
     .replace(/\{erapaiva\}/g, INV.dateFi(inv.due))
     .replace(/\{summa\}/g, INV.money(t.gross, inv.sender.currency))
-    .replace(/\{viite\}/g, inv.reference);
+    .replace(/\{viite\}/g, inv.reference)
+    .replace(/\{virtuaaliviivakoodi\}/g, vcode);
   return { subject: rep(cfg.mailSubject), body: rep(cfg.mailBody) };
 }
 
@@ -466,10 +526,12 @@ function mailTexts(inv) {
 /* ===================================================================== */
 async function makePdf() {
   const b = currentBiller();
+  const err0 = DATE_IDS.map(normalizeD).includes(null);
+  if (err0) { status('Tarkista päivämäärä (muoto pp.kk.vvvv).', 'err'); return null; }
   const inv = buildInvoice(b ? await logoFor(b) : '');
   const err = validate(inv);
   if (err) { status(err, 'err'); return null; }
-  const doc = INV.buildPdf(inv);
+  const doc = INV.buildPdf(inv, pdfOpts());
   return { inv, doc, blob: doc.output('blob'), name: fileNameFor(inv) };
 }
 
@@ -621,8 +683,9 @@ $('btnNew').onclick = async () => {
   $('doneCard').hidden = true;
   $('asiakas').value = '';
   onCustomerChange();
-  $('toimituspvm').value = '';
-  $('laskupvm').value = INV.today();
+  setD('toimituspvm', '');
+  setD('laskupvm', INV.today());
+  $('vapaateksti').value = '';
   ROWS = [];
   addRow();
   await applyBiller();
@@ -776,7 +839,7 @@ async function refreshArchive() {
   files.sort((a, b) => b.mod - a.mod);
   ul.innerHTML = files.length
     ? files.map((f, i) => `<li><button type="button" data-f="${i}">${esc(f.name)}</button>
-        <span class="muted small">${new Date(f.mod).toLocaleDateString('fi-FI')}</span></li>`).join('')
+        <span class="muted small">${INV.dateFi(INV.iso(new Date(f.mod)))}</span></li>`).join('')
     : `<li class="muted">Kansiossa ${esc(folder)} ei ole laskuja.</li>`;
   ul.onclick = async (e) => {
     const i = e.target.dataset.f;
@@ -801,14 +864,22 @@ function renderLocalArchive() {
 /* ===================================================================== */
 const SET_MAP = {
   cfgRegFile: 'regFile', cfgOutFolder: 'outFolder', cfgYearFolders: 'yearFolders',
-  cfgFilePattern: 'filePattern', cfgMailSubject: 'mailSubject', cfgMailBody: 'mailBody'
+  cfgFilePattern: 'filePattern', cfgMailSubject: 'mailSubject', cfgMailBody: 'mailBody',
+  cfgPdfColor: 'pdfColor', cfgBarcode: 'barcode'
 };
+
+function syncStyleUi() {
+  $('cfgPdfColor').disabled = !$('cfgStyleColor').checked;
+}
 
 function fillSettings() {
   for (const [id, key] of Object.entries(SET_MAP)) {
     const el = $(id);
-    if (el.type === 'checkbox') el.checked = !!cfg[key]; else el.value = cfg[key] ?? '';
+    if (el.type === 'checkbox') el.checked = cfg[key] !== false && !!cfg[key]; else el.value = cfg[key] ?? '';
   }
+  $('cfgStyleBw').checked = cfg.pdfStyle !== 'color';
+  $('cfgStyleColor').checked = cfg.pdfStyle === 'color';
+  syncStyleUi();
   $('cfgRegFile').closest('label').hidden = ST.mode !== 'folder';
   const own = !!localStorage.getItem(LOGO_KEY);
   $('logoInfo').textContent = own
@@ -824,11 +895,14 @@ function readSettings() {
     const el = $(id);
     cfg[key] = el.type === 'checkbox' ? el.checked : el.value.trim();
   }
+  cfg.pdfStyle = $('cfgStyleColor').checked ? 'color' : 'bw';
   cfg.outFolder = (cfg.outFolder || 'Laskut').replace(/^\/+|\/+$/g, '');
   if (!cfg.filePattern.includes('{nro}')) cfg.filePattern = 'Lasku_{nro}_' + cfg.filePattern;
   CFG.save();
 }
 
+$('cfgStyleBw').onchange = syncStyleUi;
+$('cfgStyleColor').onchange = syncStyleUi;
 $('btnSettings').onclick = () => { fillSettings(); $('settingsDialog').showModal(); };
 $('btnCloseSettings').onclick = () => $('settingsDialog').close();
 $('btnSaveCfg').onclick = async () => {
@@ -875,7 +949,6 @@ document.querySelectorAll('.tab').forEach(t => { t.onclick = () => showView(t.da
 $('btnAddRow').onclick = () => addRow();
 $('asiakas').onchange = onCustomerChange;
 $('laskuttaja').onchange = () => { ROWS.forEach(r => { if (r.product === '') r.vat = defaultVat(); }); renderRows(); applyBiller(); };
-$('laskupvm').onchange = updateDue;
 $('maksuehto').oninput = updateDue;
 $('laskunro').oninput = updateRef;
 
@@ -883,7 +956,8 @@ $('laskunro').oninput = updateRef;
   if (typeof XLSX === 'undefined' || !window.jspdf) {
     status('Ohjelmakirjastoja ei saatu ladattua. Tarkista verkkoyhteys ja päivitä sivu.', 'err');
   }
-  $('laskupvm').value = INV.today();
+  initDateFields();
+  setD('laskupvm', INV.today());
   $('maksuehto').value = 14;
   updateDue();
   addRow();

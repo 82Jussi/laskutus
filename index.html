@@ -77,11 +77,17 @@
     <div class="card-h">Laskun tiedot</div>
     <div class="grid3">
       <label>Laskunumero<input type="text" id="laskunro"></label>
-      <label>Laskun päivä<input type="date" id="laskupvm"></label>
+      <label>Laskun päivä
+        <span class="datebox"><input type="text" id="laskupvm" class="dfield" placeholder="pp.kk.vvvv" inputmode="decimal" autocomplete="off"><input type="date" class="dpick" data-for="laskupvm" tabindex="-1" aria-label="Valitse laskun päivä kalenterista"></span>
+      </label>
       <label>Maksuehto (pv)<input type="number" id="maksuehto" min="0" inputmode="numeric"></label>
-      <label>Eräpäivä<input type="date" id="erapvm"></label>
+      <label>Eräpäivä
+        <span class="datebox"><input type="text" id="erapvm" class="dfield" placeholder="pp.kk.vvvv" inputmode="decimal" autocomplete="off"><input type="date" class="dpick" data-for="erapvm" tabindex="-1" aria-label="Valitse eräpäivä kalenterista"></span>
+      </label>
       <label>Viitenumero<input type="text" id="viite" readonly></label>
-      <label>Toimituspäivä<input type="date" id="toimituspvm"></label>
+      <label>Toimituspäivä
+        <span class="datebox"><input type="text" id="toimituspvm" class="dfield" placeholder="pp.kk.vvvv" inputmode="decimal" autocomplete="off"><input type="date" class="dpick" data-for="toimituspvm" tabindex="-1" aria-label="Valitse toimituspäivä kalenterista"></span>
+      </label>
     </div>
     <div class="muted small" id="numberHint"></div>
     <label>Teksti laskulle
@@ -164,6 +170,12 @@
 <dialog id="settingsDialog">
   <h2>Asetukset</h2>
 
+  <div class="set-title">Laskun ulkoasu</div>
+  <label class="chk"><input type="radio" name="pdfStyle" id="cfgStyleBw" value="bw"> Mustavalkoinen</label>
+  <label class="chk"><input type="radio" name="pdfStyle" id="cfgStyleColor" value="color"> Korostusväri
+    <input type="color" id="cfgPdfColor" class="colorpick" aria-label="Korostusväri"></label>
+  <label class="chk"><input type="checkbox" id="cfgBarcode"> Pankkiviivakoodi ja virtuaaliviivakoodi</label>
+
   <div class="set-title">Tallennus</div>
   <label>Rekisteritiedoston nimi
     <input type="text" id="cfgRegFile">
@@ -180,7 +192,7 @@
   <label>Otsikko <span class="hint">{nro} {laskuttaja} {asiakas}</span>
     <input type="text" id="cfgMailSubject">
   </label>
-  <label>Viesti <span class="hint">{nro} {erapaiva} {summa} {viite} {laskuttaja}</span>
+  <label>Viesti <span class="hint">{nro} {erapaiva} {summa} {viite} {virtuaaliviivakoodi} {laskuttaja}</span>
     <textarea id="cfgMailBody" rows="6"></textarea>
   </label>
 
@@ -197,6 +209,8 @@
     <p><b>Tietokone:</b> valitse kerran OneDriven Laskutus-kansio. Laskut tallentuvat kansioon automaattisesti ja laskunumero pidetään tiedostossa laskutus-tila.json.</p>
     <p><b>Puhelin:</b> valitse rekisteri-Excel OneDrivesta. Tallenna lasku avaa jakovalikon: valitse OneDrive ja kansio Laskutus/Laskut/vuosi. Jaa PDF → sähköpostiohjelma liittää laskun suoraan viestiin.</p>
     <p><b>Laskunumero puhelimella:</b> puhelin ei näe tietokoneen viimeisintä numeroa. Tarkista numero, jos olet laskuttanut samana päivänä myös tietokoneella.</p>
+    <p><b>Päivämäärät:</b> kirjoita muodossa pp.kk.vvvv (esim. 5.12.2026, 5.12.26 tai 051226) tai valitse kalenterista.</p>
+    <p><b>Viivakoodi:</b> tulostuu, kun ensimmäinen tilinumero on suomalainen (FI) IBAN, valuutta on euro ja summa on alle miljoona euroa.</p>
   </details>
 
   <div class="dlg-btns">
