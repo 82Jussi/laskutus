@@ -315,7 +315,13 @@ function patternRegex(prefix) {
     if (/^\{\w+\}$/.test(x)) return '.*?';
     return x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   }).join('');
-  return new RegExp('^(?:Itse)?' + rx + '$', 'i');
+  return new RegExp('^' + rx + '$', 'i');
+}
+/* Itselaskutuksen tiedostonimi palautetaan tavallisen laskun muotoon numeron tunnistamista varten */
+function selfFileToNormal(name) {
+  if (!/^Itselaskutus/i.test(name)) return null;
+  const pat = cfg.filePattern || 'Lasku_{nro}_{asiakas}.pdf';
+  return /^Lasku/i.test(pat) ? name.replace(/^Itselaskutus/i, 'Lasku') : name.replace(/^Itselaskutus_/i, '');
 }
 
 /* Tietokoneella: suurin olemassa oleva laskunumero laskukansiosta alikansioineen */
@@ -331,7 +337,7 @@ async function scanMaxNumber(b) {
     for (const e of await ST.list(f)) {
       if (e.kind === 'directory' && depth < 2) await walk(f + '/' + e.name, depth + 1);
       if (e.kind !== 'file') continue;
-      const m = e.name.match(rx);
+      const m = e.name.match(rx) || (selfFileToNormal(e.name) || '').match(rx);
       if (m) max = Math.max(max, Number(m[1]));
     }
   };
@@ -633,17 +639,20 @@ function validate(inv) {
   return '';
 }
 
+/* Tiedostonimi. Itselaskutuksessa mallin alun "Lasku" korvataan sanalla "Itselaskutus"
+   (oletusmallilla Itselaskutus_1001_Nimi.pdf) */
 function fileNameFor(inv) {
   const t = INV.totals(inv.lines);
+  const pat = cfg.filePattern || 'Lasku_{nro}_{asiakas}.pdf';
   const base = safeName(
-    (cfg.filePattern || 'Lasku_{nro}_{asiakas}.pdf')
-      .replace(/\{nro\}/g, inv.number)
+    pat.replace(/\{nro\}/g, inv.number)
       .replace(/\{asiakas\}/g, inv.customer.name)
       .replace(/\{pvm\}/g, inv.date)
       .replace(/\{vuosi\}/g, inv.date.slice(0, 4))
       .replace(/\{summa\}/g, t.gross.toFixed(2))
   ).replace(/\.pdf$/i, '') + '.pdf';
-  return inv.kind === 'self' ? 'Itse' + base : base;
+  if (inv.kind !== 'self') return base;
+  return /^Lasku/i.test(base) ? base.replace(/^Lasku/i, 'Itselaskutus') : 'Itselaskutus_' + base;
 }
 
 function outFolderFor(inv) {
@@ -1020,7 +1029,7 @@ function renderLocalArchive() {
   const log = (STATE.log || []).slice().reverse();
   ul.innerHTML = '<li class="muted small">Puhelimella tehdyt laskut löytyvät OneDrivesta. Alla tällä laitteella luodut:</li>' +
     (log.length
-      ? log.map(l => `<li><span>${l.tyyppi === 'self' ? 'Itselasku ' : ''}${esc(l.nro)} · ${esc(l.asiakas)}</span>
+      ? log.map(l => `<li><span>${l.tyyppi === 'self' ? 'Itselaskutus ' : ''}${esc(l.nro)} · ${esc(l.asiakas)}</span>
           <span class="muted small">${INV.dateFi(l.pvm)} · ${INV.money(l.summa)}</span></li>`).join('')
       : '<li class="muted">Ei laskuja.</li>');
 }

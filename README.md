@@ -17,7 +17,6 @@ ovat käytössä sekä tietokoneella että puhelimella.
 | `app.js` | Ohjelman logiikka |
 | `batch.js` | Erityisominaisuudet: itselaskutus ja tiekunnan laskutus |
 | `manifest.json`, `icon-*.png`, `apple-touch-icon.png`, `favicon-32.png` | Kotinäytön kuvake |
-| `Laskutus-rekisteri.xlsx` | Rekisteripohja (ei GitHubiin – OneDriven Laskutus-kansioon) |
 
 ## OneDrive-kansio
 
@@ -31,7 +30,7 @@ OneDrive
             ├── Lasku_1001_Esimerkki Oy.pdf
             ├── Itselaskutus
             │   └── Itselaskutus 11-2026
-            │       ├── ItseLasku_1002_Maija Meikäläinen.pdf
+            │       ├── Itselaskutus_1002_Maija Meikäläinen.pdf
             │       └── yhteenveto.csv
             └── Tiekunnat
                 └── Esimerkkitien tiekunta
@@ -53,53 +52,38 @@ OneDrive
 
 ## Kirjekuori: E5 (156 × 220 mm), ikkuna 30 × 90 mm
 
-A4 taitetaan kerran puoliksi. Ikkuna on 40 mm yläreunasta ja 18 mm vasemmasta reunasta.
-Vastaanottajan osoite on alueella x 22–92 mm, y 41–61,5 mm, joka näkyy ikkunasta, vaikka paperi
-liikkuisi kuoressa. Pitkä osoite rivitetään ja tarvittaessa fonttia pienennetään.
+A4 taitetaan kerran puoliksi. Vastaanottajan osoite on alueella x 22–92 mm, y 41–61,5 mm.
 
 ## Erityisominaisuudet (Asetukset → Erityisominaisuudet)
-
-Välilehdet **Itselaskutus** ja **Tiekunta** näkyvät vain, kun ominaisuus on otettu käyttöön.
 
 ### Itselaskutus
 
 Rekisterin `Itselaskutus`-välilehti: **Käytössä | Nimi | Osoite | Postinumero | Postitoimipaikka |
 Sähköposti | Tilinumero | Selite | Määrä | Yksikkö | Hinta, alv 0% | ALV**
 
-- Saajan tiedot toistetaan jokaisella rivillä. Saman saajan (Nimi + Tilinumero) rivit tulevat yhdelle itselaskulle.
+- Saajan tiedot toistetaan jokaisella rivillä. Saman saajan (Nimi + Tilinumero) rivit tulevat yhdelle itselaskutukselle.
 - Ostaja (laskun laatija) valitaan ohjelmassa Laskuttajarekisteristä koko erälle.
-- Ohjelma tarkistaa tilinumeron (IBAN), pakolliset kentät ja ristiriidat (esim. sama saaja eri osoitteella).
-  Virheelliset saajat ohitetaan ja näytetään punaisella.
-- Tyhjä Määrä = 1. ALV on pakollinen. Käytössä = Ei jättää rivin pois.
-- Itselaskussa on merkintä *Itselaskutus*, myyjän osoite ikkunassa ja maksutiedoissa myyjän tilinumero.
+- PDF:n otsikko on *ITSELASKUTUS* ja tiedostonimi `Itselaskutus_<nro>_<saaja>.pdf`.
+- Laskulle tulee vain käyttäjän kirjoittama lisäteksti – ohjelma ei lisää omaa tekstiä.
 - Itselaskutuksesta ja laskun hyväksymismenettelystä on sovittava myyjän kanssa.
 
 ### Tiekunnan laskutus
 
-- `Tiekunnat`: Tiekunta-ID, Tiekunnan nimi, Käytössä, Laskutusvuosi, Laskentatapa, Kokonaisbudjetti,
-  Yksikköhinta, Perusmaksu, ALV, Laskurivin teksti, Lisätieto.
-- `Tiekuntaosakkaat`: Tiekunta-ID, Osakasnumero, Käytössä, Asiakasnumero, Osakas / nimi, Kiinteistötunnus,
-  Osoite, Postinumero, Postitoimipaikka, Maa, Sähköposti, Tieyksiköt, Muu maksu, Lisätieto
-  (+ harmaat tarkistuskaavat Osuus %, Tieyksikkömaksu, Perusmaksu, Laskutettava).
-- **Kokonaisbudjetti**: yksikköhinta = budjetti / käytössä olevien osakkaiden tieyksiköt (4 desimaalia).
-  **Yksikköhinta**: tieyksiköt × yksikköhinta. Perusmaksu ja osakkaan muu maksu lisätään omina riveinään.
-- Laskuttajaksi valitaan tiekunta Laskuttajarekisteristä (tiekunnan tilinumero ja numerointi, esim. etuliite `TK-`).
-- Laskuissa on viitenumero ja pankkiviivakoodi kuten tavallisissa laskuissa.
+- `Tiekunnat`: laskentatapa (Kokonaisbudjetti / Yksikköhinta), budjetti, yksikköhinta, perusmaksu, ALV.
+- `Tiekuntaosakkaat`: osakaslista, tieyksiköt, muu maksu. Harmaat sarakkeet ovat tarkistuskaavoja.
+- Laskuttajaksi valitaan tiekunta Laskuttajarekisteristä.
 
 ### Erän muodostus
 
 1. Valitse laskuttaja, päivät ja tarkista ensimmäinen laskunumero.
-2. Tarkista kortit (summa, rivit, varoitukset). **Esikatsele** näyttää yksittäisen laskun.
-3. **Muodosta kaikki** – tietokoneella PDF:t ja `yhteenveto.csv` tallentuvat eräkansioon;
-   puhelimessa ne avautuvat jakovalikkoon kerralla.
+2. Tarkista kortit. **Esikatsele** näyttää yksittäisen laskun.
+3. **Muodosta kaikki** – tietokoneella PDF:t ja `yhteenveto.csv` eräkansioon; puhelimessa jakovalikkoon.
 4. Lähetä kortin **Sähköposti**- tai **Jaa PDF** -painikkeella.
 
 ## Tietoturva
 
-GitHub Pagesissa on vain ohjelmakoodi. Rekisteri ja laskut ovat omassa OneDrivessasi ja käsitellään
-vain omassa selaimessasi. Ohjelma näkee ainoastaan sen kansion tai tiedoston, jonka itse valitset.
+GitHub Pagesissa on vain ohjelmakoodi. Rekisteri ja laskut ovat omassa OneDrivessasi.
 
 ## Julkaisu GitHub Pagesiin
 
 Vie kaikki ohjelmatiedostot (ei rekisteri-Exceliä) repositorion juureen ja ota Pages käyttöön.
-Paikallinen testaus: `python -m http.server 8000` → `http://localhost:8000`.

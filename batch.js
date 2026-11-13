@@ -2,7 +2,7 @@
  *
  * Molemmat muodostavat erän laskuja rekisterin omalta välilehdeltä:
  *   - Itselaskutus: jokainen rivi on täydellinen (saajan tiedot toistetaan). Saman saajan
- *     (Nimi + Tilinumero) rivit yhdistetään yhdeksi itselaskuksi. Laskuttaja (ostaja,
+ *     (Nimi + Tilinumero) rivit yhdistetään yhdeksi itselaskutukseksi. Laskuttaja (ostaja,
  *     laskun laatija) valitaan ohjelmassa koko erälle.
  *   - Tiekunta: jokaiselle käytössä olevalle osakkaalle oma lasku tieyksiköiden mukaan.
  * Tietokoneella laskut tallennetaan kansioon Laskut/vuosi/Itselaskutus/erä tai
@@ -60,6 +60,11 @@ const BATCH = {
     const el = $(kind === 'self' ? 'selfStatus' : 'roadStatus');
     el.className = 'status ' + cls;
     el.textContent = msg || '';
+  },
+
+  /* "1 itselaskutus" / "3 itselaskutusta", "1 lasku" / "3 laskua" */
+  count(kind, n) {
+    return kind === 'self' ? `${n} itselaskutus${n === 1 ? '' : 'ta'}` : `${n} lasku${n === 1 ? '' : 'a'}`;
   },
 
   async refresh() {
@@ -125,7 +130,7 @@ const BATCH = {
     const bad = plan.length - ok.length;
     $('selfSummary').innerHTML = !rows
       ? '<p class="muted">Rekisterin Itselaskutus-välilehti puuttuu tai on tyhjä.</p>'
-      : `<div class="bsum"><span class="pill">${ok.length} itselaskua</span>` +
+      : `<div class="bsum"><span class="pill">${this.count('self', ok.length)}</span>` +
         `<span class="pill">yhteensä ${INV.money(total)}</span>` +
         (bad ? `<span class="pill warn">${bad} virheellistä – ohitetaan</span>` : '') +
         (skipped ? `<span class="pill">${skipped} riviä ei käytössä</span>` : '') + '</div>';
@@ -222,7 +227,7 @@ const BATCH = {
     const net = ok.reduce((s, p) => s + INV.totals(p.inv.lines.filter(l => l.unit === 'tieyks.')).net, 0);
     const diff = r.road.method === 'budget' ? Math.round((net - r.road.budget) * 100) / 100 : 0;
     $('roadSummary').innerHTML =
-      `<div class="bsum"><span class="pill">${ok.length} laskua</span>` +
+      `<div class="bsum"><span class="pill">${this.count('road', ok.length)}</span>` +
       `<span class="pill">${INV.num(r.totalUnits, 3)} tieyksikköä</span>` +
       `<span class="pill">${INV.price(r.perUnit)} € / tieyks.</span>` +
       `<span class="pill">yhteensä ${INV.money(total)}</span>` +
@@ -265,7 +270,7 @@ const BATCH = {
     </div>`;
   },
 
-  /* Täydentää laskun yhteiset tiedot (päivät, teksti, laskuttaja, numero, viite) */
+  /* Täydentää laskun yhteiset tiedot (päivät, käyttäjän lisäteksti, laskuttaja, numero, viite) */
   async complete(kind, p, number) {
     const b = this.biller(kind);
     const inv = { ...p.inv, number, sender: { ...(b || {}), logoData: await logoFor(b) } };
@@ -314,9 +319,8 @@ const BATCH = {
     const bad = this.plan[kind].length - ok.length;
     if (!ok.length) { this.setStatus(kind, 'Ei muodostettavia laskuja.', 'err'); return; }
     const total = ok.reduce((s, p) => s + INV.totals(p.inv.lines).gross, 0);
-    const what = kind === 'self' ? 'itselaskua' : 'laskua';
     const already = ok.filter(p => this.done[kind][p.key]).length;
-    if (!confirm(`Muodostetaanko ${ok.length} ${what}, yhteensä ${INV.money(total)}?` +
+    if (!confirm(`Muodostetaanko ${this.count(kind, ok.length)}, yhteensä ${INV.money(total)}?` +
       (bad ? `\n${bad} virheellistä ohitetaan.` : '') +
       (already ? `\n\nHuom: ${already} näistä on jo muodostettu tässä istunnossa – niistä tulee uudet laskut uusilla numeroilla.` : '') +
       `\n\nLaskunumerot ${ok[0].inv.number}–${ok[ok.length - 1].inv.number}.`)) return;
@@ -355,10 +359,11 @@ const BATCH = {
       return;
     }
 
+    const what = this.count(kind, made.length);
     const folder = made.length ? this.folder(kind, made[0].inv) : '';
     if (folderMode) {
       await ST.writeFile(folder + '/yhteenveto.csv', this.summaryCsv(kind, made)).catch(() => {});
-      this.setStatus(kind, `✓ ${made.length} ${what} tallennettu kansioon ${ST.folderName()}/${folder} (+ yhteenveto.csv). Lähetä ne korttien Sähköposti-painikkeilla.`, 'ok');
+      this.setStatus(kind, `✓ ${what} tallennettu kansioon ${ST.folderName()}/${folder} (+ yhteenveto.csv). Lähetä ne korttien Sähköposti-painikkeilla.`, 'ok');
       refreshArchive().catch(() => {});
     } else {
       renderLocalArchive();
@@ -366,14 +371,14 @@ const BATCH = {
       files.push(new File([this.summaryCsv(kind, made)], 'yhteenveto.csv', { type: 'text/csv' }));
       if (ST.canShareFile(files)) {
         try {
-          await ST.share(files, `${made.length} ${what}`, '');
-          this.setStatus(kind, `✓ ${made.length} ${what} muodostettu. Jos valitsit OneDriven, tallenna kansioon Laskutus/${folder}.`, 'ok');
+          await ST.share(files, what, '');
+          this.setStatus(kind, `✓ ${what} muodostettu. Jos valitsit OneDriven, tallenna kansioon Laskutus/${folder}.`, 'ok');
         } catch (e) {
-          this.setStatus(kind, `✓ ${made.length} ${what} muodostettu. Jaa ne korttien Jaa PDF -painikkeilla.`, 'ok');
+          this.setStatus(kind, `✓ ${what} muodostettu. Jaa ne korttien Jaa PDF -painikkeilla.`, 'ok');
         }
       } else {
         made.forEach((m, i) => setTimeout(() => ST.download(m.blob, m.name), i * 400));
-        this.setStatus(kind, `✓ ${made.length} ${what} ladattu laitteelle. Siirrä ne OneDriveen kansioon Laskutus/${folder}.`, 'ok');
+        this.setStatus(kind, `✓ ${what} ladattu laitteelle. Siirrä ne OneDriveen kansioon Laskutus/${folder}.`, 'ok');
       }
     }
     this.afterGenerate(kind);

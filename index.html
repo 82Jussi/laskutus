@@ -119,7 +119,7 @@
 <section id="selfView" class="view">
   <div class="card">
     <div class="card-h">Itselaskutuserä</div>
-    <p class="small muted">Saajat ja rivit luetaan rekisterin Itselaskutus-välilehdeltä. Saman saajan (nimi + tilinumero) rivit tulevat yhdelle itselaskulle.</p>
+    <p class="small muted">Saajat ja rivit luetaan rekisterin Itselaskutus-välilehdeltä. Saman saajan (nimi + tilinumero) rivit tulevat yhdelle itselaskutukselle.</p>
     <div class="grid2">
       <label>Ostaja – laskun laatija
         <select id="selfBiller" data-biller></select>
@@ -142,12 +142,12 @@
     </label>
   </div>
   <div class="card">
-    <div class="card-h">Muodostettavat itselaskut <button type="button" class="mini" id="btnSelfReload">Päivitä</button></div>
+    <div class="card-h">Muodostettavat itselaskutukset <button type="button" class="mini" id="btnSelfReload">Päivitä</button></div>
     <div id="selfSummary" class="small"></div>
     <div id="selfList"></div>
   </div>
   <div class="card actions">
-    <button type="button" class="btn primary" id="btnSelfAll">Muodosta kaikki itselaskut</button>
+    <button type="button" class="btn primary" id="btnSelfAll">Muodosta kaikki itselaskutukset</button>
   </div>
   <div id="selfStatus" class="status" aria-live="polite"></div>
 </section>
@@ -272,10 +272,10 @@
   <label class="chk"><input type="checkbox" id="cfgFeatRoad"> Tiekunnan laskutus</label>
   <p class="small muted">Lisää Tiekunta-välilehden. Osakaslista ja tieyksiköt luetaan rekisterin Tiekunnat- ja Tiekuntaosakkaat-välilehdiltä.</p>
   <div id="selfMailSettings">
-    <label>Itselaskun sähköpostin otsikko <span class="hint">{nro} {laskuttaja}</span>
+    <label>Itselaskutuksen sähköpostin otsikko <span class="hint">{nro} {laskuttaja}</span>
       <input type="text" id="cfgSelfMailSubject">
     </label>
-    <label>Itselaskun viesti <span class="hint">{nro} {selite} {summa} {tilinumero} {erapaiva} {laskuttaja}</span>
+    <label>Itselaskutuksen viesti <span class="hint">{nro} {selite} {summa} {tilinumero} {erapaiva} {laskuttaja}</span>
       <textarea id="cfgSelfMailBody" rows="5"></textarea>
     </label>
   </div>
@@ -315,7 +315,7 @@
     <p><b>Laskunumero puhelimella:</b> puhelin ei näe tietokoneen viimeisintä numeroa. Tarkista numero, jos olet laskuttanut samana päivänä myös tietokoneella.</p>
     <p><b>Päivämäärät:</b> kirjoita muodossa pp.kk.vvvv (esim. 5.12.2026, 5.12.26 tai 051226) tai valitse kalenterista.</p>
     <p><b>Viivakoodi:</b> tulostuu, kun ensimmäinen tilinumero on suomalainen (FI) IBAN, valuutta on euro ja summa on alle miljoona euroa.</p>
-    <p><b>Erälaskut:</b> itselaskut ja tiekunnan laskut tallentuvat tietokoneella kansioon Laskut/vuosi/Itselaskutus/erä tai Laskut/vuosi/Tiekunnat/tiekunta yhdessä yhteenveto.csv-tiedoston kanssa.</p>
+    <p><b>Erälaskut:</b> itselaskutukset ja tiekunnan laskut tallentuvat tietokoneella kansioon Laskut/vuosi/Itselaskutus/erä tai Laskut/vuosi/Tiekunnat/tiekunta yhdessä yhteenveto.csv-tiedoston kanssa.</p>
   </details>
 
   <div class="dlg-btns">

@@ -5,7 +5,7 @@
  * piirtämistä, joten tekstit eivät mene päällekkäin. Puuttuvat tiedot jätetään
  * kokonaan pois (otsikko ja kenttä).
  *
- * Laskutyypit (inv.kind): 'normal' (oletus), 'self' (itselasku), 'road' (tiekunta).
+ * Laskutyypit (inv.kind): 'normal' (oletus), 'self' (itselaskutus), 'road' (tiekunta).
  */
 
 const C128 = [
@@ -258,17 +258,15 @@ const INV = {
         logoW = p.width * k;
       } catch (e) { console.warn('Logoa ei voitu lisätä', e); }
     }
-    if (!logoW) line(s.name, L, 20, 110, 16, 'bold', T.strong);
-    line(SELF ? 'ITSELASKU' : 'LASKU', R, 17, 70, 20, 'bold', T.accent, 'right');
+    if (!logoW) line(s.name, L, 20, 100, 16, 'bold', T.strong);
+    line(SELF ? 'ITSELASKUTUS' : 'LASKU', R, 17, 70, 20, 'bold', T.accent, 'right');
     line(inv.number, R, 24, 60, 11, 'normal', T.ink, 'right');
     doc.setDrawColor(...T.accent); doc.setLineWidth(0.7); doc.line(L, 30, R, 30); doc.setLineWidth(0.2);
 
     /* ===== osoitteet =====
      * Vastaanottaja E5-ikkunakuoren (156 × 220 mm) pienen ikkunan 30 × 90 mm kohdalle
      * (ikkuna 40 mm ylhäältä, 18 mm vasemmalta). A4 taitetaan kerran puoliksi.
-     * Paperi voi liikkua kuoressa noin 10 mm sivuttain ja 7,5 mm pystysuunnassa, joten
-     * ikkuna näkyy aina alueella x 18–98 mm, y 40–62,5 mm. Osoite piirretään alueelle
-     * x 22–92 mm, y 41–61,5 mm, eikä alueelle tulosteta muuta. */
+     * Osoite piirretään alueelle x 22–92 mm, y 41–61,5 mm, eikä alueelle tulosteta muuta. */
     const foreign = (cn) => has(cn) && !/^(suomi|finland|fi)$/i.test(cn.trim());
     const sLines = [s.name, s.addr, [s.zip, s.city].filter(has).join(' '), foreign(s.country) ? s.country : ''].filter(has);
     const cLines = [c.name, c.recipient, c.addr, [c.zip, c.city].filter(has).join(' '), foreign(c.country) ? c.country : ''].filter(has);
@@ -344,7 +342,7 @@ const INV = {
       y += 6.8;
     };
     const contHeader = () => {
-      line(`${s.name || ''} · ${SELF ? 'Itselasku' : 'Lasku'} ${inv.number} (jatkuu)`, L, 14, W, 8, 'normal', T.grey);
+      line(`${s.name || ''} · ${SELF ? 'Itselaskutus' : 'Lasku'} ${inv.number} (jatkuu)`, L, 14, W, 8, 'normal', T.grey);
       y = 24;
     };
     header();
@@ -365,13 +363,9 @@ const INV = {
       y += 4.8;
     }
 
-    /* ===== yhteenveto + teksti (viimeiselle sivulle maksuosan yläpuolelle) ===== */
+    /* ===== yhteenveto + käyttäjän lisäteksti (viimeiselle sivulle maksuosan yläpuolelle) ===== */
     const rates = Object.keys(t.byRate).sort((a, b) => a - b);
-    const noteText = SELF
-      ? 'Itselaskutus. Ostaja on laatinut laskun myyjän puolesta myyjän kanssa sovitun menettelyn mukaisesti.' +
-        (has(inv.note) ? '\n' + inv.note : '')
-      : inv.note;
-    const noteLines = has(noteText) ? wrap(noteText, W, 10) : [];
+    const noteLines = has(inv.note) ? wrap(inv.note, W, 10) : [];
     const sumH = 1 + (1 + rates.length) * 5.4 + 9 + (noteLines.length ? 4 + noteLines.length * 4.6 : 0);
     if (y + sumH > CONTENT_MAX_LAST) { doc.addPage(); contHeader(); }
     y += 1;
