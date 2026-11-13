@@ -1,29 +1,39 @@
 # Laskutus – rekisteröinnitön OneDrive-malli
 
 Selainohjelma laskujen tekemiseen. Ei Microsoft-kirjautumista, Azurea eikä Client ID:tä.
-Tiedostot kulkevat laitteen oman OneDrive-sovelluksen kautta.
+Tiedostot: index.html, styles.css, config.js, storage.js, search.js, invoice.js, app.js, batch.js,
+manifest.json ja kuvakkeet. Rekisteri-Excel kuuluu OneDriven Laskutus-kansioon, ei GitHubiin.
 
-## Tiedostot
+## Tiekunnan laskutus (Asetukset → Erityisominaisuudet → Tiekunnan laskutus)
 
-`index.html`, `styles.css`, `config.js`, `storage.js`, `search.js`, `invoice.js`, `app.js`, `batch.js`,
-`manifest.json` ja kuvakkeet. Rekisteri-Excel kuuluu OneDriven Laskutus-kansioon, ei GitHubiin.
+Yksi tiekunta per rekisteri. Useammalle tiekunnalle tehdään oma rekisteritiedosto ja valitaan
+se Rekisteri-välilehdeltä.
 
-## Käyttö
+Rekisterin **Tiekunta**-välilehti:
+- Yläosa: Tiekunta, Tie / selitelmä, Laskutusvuosi, Laskentatapa (Kokonaisbudjetti / Yksikköhinta),
+  Ositeltava summa, Yksikköhinta, Perusmaksu (€ / maksaja), Perusmaksun teksti, Ylläpitomaksun teksti,
+  ALV %, Laskun lisäteksti, Vahvistettu. `{vuosi}` korvautuu laskutusvuodella.
+- Tieyksikköluettelo (yksi rivi per tienkäyttöyksikkö): Käytössä, Kiinteistö, Maksaja, Osoite,
+  Postinumero, Postitoimipaikka, Sähköposti, Tienkäyttöyksikkö, Liikennelaji,
+  Yksiköiden lkm, Painoluku, Matka (km), Matkan korjauskerroin, Painoluvun korjauskerroin,
+  (Tieyksiköt, Osuus %, Osittelu € – tarkistuskaavat), Lisätieto.
+- Tieyksiköt = lkm × painoluku × matka × korjauskertoimet (tyhjä kerroin = 1).
 
-- **Tietokone (Edge/Chrome):** valitse kerran OneDriven Laskutus-kansio. Laskut tallentuvat `Laskut/vuosi`-kansioon.
-- **Puhelin:** valitse rekisteri-Excel OneDrivesta. Tallenna lasku avaa jakovalikon.
-- **Kirjekuori:** E5 (156 × 220 mm), ikkuna 30 × 90 mm, A4 kerran taitettuna.
-- **Myyjänro** on sisäinen tieto (laskunumerointi), eikä se näy laskulla.
+Laskutus:
+- Jokainen maksaja saa yhden laskun: perusmaksu kerran ja ylläpitomaksu kiinteistöittäin
+  (osuus = kiinteistön tieyksiköt / kaikki tieyksiköt × ositeltava summa, pyöristys senteiksi).
+- Viitenumero muodostetaan aina laskunumerosta, joten pankkiviivakoodi tulostuu kaikille laskuille.
+- Laskuttajaksi valitaan automaattisesti Laskuttajarekisterin laskuttaja, jonka Saaja on sama kuin tiekunnan nimi.
+- Laskun lisäteksti tulee rekisteristä ja sitä voi muokata ohjelmassa ennen muodostusta.
 
-## Itselaskutus (Asetukset → Erityisominaisuudet)
+### Ojitusyhteisön laskutus (Asetukset → Erityisominaisuudet → Ojitusyhteisön laskutus)
 
-- Rekisterin `Itselaskutus`-välilehti: Käytössä, Nimi, Osoite, Postinumero, Postitoimipaikka, Sähköposti,
-  Tilinumero, Selite, Määrä, Yksikkö, Hinta alv 0%, ALV. Saman saajan (Nimi + Tilinumero) rivit tulevat yhdelle itselaskutukselle.
-- **Ensimmäinen laskunumero:** muutos näkyy heti korteissa ja esikatselussa. Käsin annettu numero säilyy
-  Päivitä-painikkeen ja välilehden vaihdon yli; erän muodostuksen jälkeen ohjelma ehdottaa taas seuraavaa vapaata numeroa.
-- **Päivitä** lukee rekisterin uudelleen OneDrivesta (tietokone) ja laskee kortit uudelleen.
-  Puhelimessa muuttunut rekisteri valitaan uudelleen Rekisteri-välilehdeltä.
+Yksi ojitusyhteisö per rekisteri. Rekisterin **Ojitusyhteisö**-välilehti:
+- Yläosa: Ojitusyhteisö, Hanke, Laskutusvuosi, Laskurivin teksti, ALV %, Laskun lisäteksti.
+- Kuivatusalueet: Kuivatusalue | Laskutettava summa (€) | Selite. Tyhjä tai 0 = aluetta ei laskuteta.
+  Summia voi muuttaa myös ohjelmassa ennen laskujen muodostusta.
+- Osakasluettelo (rivi per tila ja alue): Käytössä, Kuivatusalue, Kiinteistötunnus, Tilan nimi, Maksaja,
+  Laskutusvastaanottaja, Osoite, Postinumero, Postitoimipaikka, Sähköposti, Muunnettu hyötyala (mha), Osuus %, Lisätieto.
 
-## Tiekunnan laskutus
-
-`Tiekunnat` ja `Tiekuntaosakkaat` -välilehdet. Toiminta kuten itselaskutuksessa, laskuissa viitenumero ja viivakoodi.
+Laskutus: tilan osuus = alueen summa × Osuus % / 100 (senteiksi pyöristettynä). Jokainen maksaja saa yhden laskun,
+jossa jokainen laskutettava tila ja alue on omana rivinään. Ohjelma varoittaa, jos alueen osuudet eivät ole yhteensä 100 %.

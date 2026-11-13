@@ -1,13 +1,4 @@
-/* storage.js – rekisteröinnitön OneDrive-malli
- *
- * Ohjelma ei kirjaudu Microsoftiin. Tiedostot kulkevat laitteen oman
- * OneDrive-sovelluksen kautta:
- *   - Tietokone (Edge/Chrome): käyttäjä valitsee kerran OneDriven synkronoidun
- *     Laskutus-kansion. Kansion kahva muistetaan selaimen IndexedDB:ssä.
- *   - Puhelin: rekisteri valitaan tiedostovalitsimesta ja laskut jaetaan
- *     jakovalikon kautta OneDriveen / sähköpostiin.
- */
-
+/* storage.js – rekisteröinnitön OneDrive-malli */
 const IDB = {
   _db: null,
   open() {
@@ -45,30 +36,20 @@ const IDB = {
     });
   }
 };
-
 const ST = {
-  /* 'folder' = kansio suoraan levyltä (tietokone), 'file' = valitsin + jako (puhelin) */
   mode: (typeof window.showDirectoryPicker === 'function') ? 'folder' : 'file',
   dir: null,
-
   async restore() {
     if (this.mode !== 'folder') return null;
     try { this.dir = (await IDB.get('dir')) || null; } catch (_) { this.dir = null; }
     return this.dir;
   },
-
   async pickFolder() {
     this.dir = await window.showDirectoryPicker({ id: 'laskutus', mode: 'readwrite' });
     await IDB.set('dir', this.dir);
     return this.dir;
   },
-
-  async forget() {
-    this.dir = null;
-    await IDB.del('dir');
-  },
-
-  /* 'granted' | 'prompt' | 'denied' | 'none'. ask=true vaatii käyttäjän napautuksen. */
+  async forget() { this.dir = null; await IDB.del('dir'); },
   async permission(ask = false) {
     if (!this.dir) return 'none';
     const opts = { mode: 'readwrite' };
@@ -76,41 +57,27 @@ const ST = {
     if (p !== 'granted' && ask) p = await this.dir.requestPermission(opts);
     return p;
   },
-
   folderName() { return this.dir ? this.dir.name : ''; },
-
   parts(path) { return String(path || '').split('/').map(s => s.trim()).filter(Boolean); },
-
   async subdir(path, create = false) {
     let d = this.dir;
     for (const p of this.parts(path)) d = await d.getDirectoryHandle(p, { create });
     return d;
   },
-
   async fileHandle(path, create = false) {
     const ps = this.parts(path);
     const name = ps.pop();
     const d = await this.subdir(ps.join('/'), create);
     return d.getFileHandle(name, { create });
   },
-
-  async readFile(path) {
-    const fh = await this.fileHandle(path);
-    return fh.getFile();
-  },
-
-  async exists(path) {
-    try { await this.fileHandle(path); return true; } catch (_) { return false; }
-  },
-
+  async readFile(path) { return (await this.fileHandle(path)).getFile(); },
+  async exists(path) { try { await this.fileHandle(path); return true; } catch (_) { return false; } },
   async writeFile(path, blob) {
     const fh = await this.fileHandle(path, true);
     const w = await fh.createWritable();
     await w.write(blob);
     await w.close();
   },
-
-  /* Palauttaa [{name, kind, handle}] */
   async list(path = '') {
     const out = [];
     let d;
@@ -118,30 +85,20 @@ const ST = {
     for await (const [name, handle] of d.entries()) out.push({ name, kind: handle.kind, handle });
     return out.sort((a, b) => a.name.localeCompare(b.name, 'fi'));
   },
-
   async readJson(path) {
-    try {
-      const f = await this.readFile(path);
-      return JSON.parse(await f.text());
-    } catch (_) { return null; }
+    try { return JSON.parse(await (await this.readFile(path)).text()); } catch (_) { return null; }
   },
-
   async writeJson(path, obj) {
     await this.writeFile(path, new Blob([JSON.stringify(obj, null, 2)], { type: 'application/json' }));
   },
-
-  /* ---------- jako (puhelin, myös Windowsin Edge/Chrome) ---------- */
   canShareFile(file) {
     const files = Array.isArray(file) ? file : [file];
-    try { return !!(navigator.canShare && navigator.canShare({ files })); }
-    catch (_) { return false; }
+    try { return !!(navigator.canShare && navigator.canShare({ files })); } catch (_) { return false; }
   },
-
   async share(file, title, text) {
     const files = Array.isArray(file) ? file : [file];
     await navigator.share({ files, title, text });
   },
-
   download(blob, name) {
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);

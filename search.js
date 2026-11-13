@@ -1,23 +1,14 @@
-/* search.js – hakukenttä (combobox) asiakkaille ja tuotteille
- *
- * Kirjoita osa nimestä, asiakas-/tuotekoodista tai paikkakunnasta. Lista järjestetään:
- *   1. koodi täsmää  2. nimi alkaa hakusanalla  3. jokin sana alkaa hakusanalla  4. sisältää
- * Jos mikään ei sisällä hakua, näytetään lähimmät osumat kirjoitusvirheistä huolimatta.
- * ä/ö/å ja a/o samaistetaan (puhelimella on nopeampi kirjoittaa).
- */
-
+/* search.js – hakukenttä (combobox) asiakkaille ja tuotteille */
 const SEARCH = {
   fold(s) {
     return String(s ?? '').toLowerCase()
       .replace(/[äå]/g, 'a').replace(/ö/g, 'o').replace(/é/g, 'e').replace(/ü/g, 'u');
   },
-
   bigrams(s) {
     const t = ' ' + s + ' ', out = new Map();
     for (let i = 0; i < t.length - 1; i++) { const g = t.substr(i, 2); out.set(g, (out.get(g) || 0) + 1); }
     return out;
   },
-  /* Dice-kerroin 0–1 */
   similarity(a, b) {
     if (!a || !b) return 0;
     const A = this.bigrams(a), B = this.bigrams(b);
@@ -26,8 +17,6 @@ const SEARCH = {
     B.forEach(v => { nb += v; });
     return (2 * inter) / (na + nb);
   },
-
-  /* entries: [{index, code, name, extra}] → [{entry, score, fuzzy}] */
   find(query, entries, limit = 50) {
     const q = this.fold(query).trim();
     if (!q) return entries.slice(0, limit).map(e => ({ entry: e, score: 9, fuzzy: false }));
@@ -46,9 +35,7 @@ const SEARCH = {
       else if (code && code.startsWith(q)) score -= 8;
       hits.push({ entry: e, score, order, fuzzy: false });
     });
-    if (hits.length) {
-      return hits.sort((a, b) => a.score - b.score || a.order - b.order).slice(0, limit);
-    }
+    if (hits.length) return hits.sort((a, b) => a.score - b.score || a.order - b.order).slice(0, limit);
     if (q.length < 3) return [];
     const near = entries.map(e => {
       const name = this.fold(e.name);
@@ -64,8 +51,6 @@ const SEARCH = {
     }).filter(h => h.score <= 0.6);
     return near.sort((a, b) => a.score - b.score).slice(0, 6);
   },
-
-  /* Liittää hakulistan tekstikenttään. */
   attach(input, opts) {
     if (input._combo) return input._combo;
     const wrap = document.createElement('span');
@@ -81,15 +66,10 @@ const SEARCH = {
     input.setAttribute('role', 'combobox');
     input.setAttribute('aria-autocomplete', 'list');
     input.setAttribute('aria-expanded', 'false');
-
     let results = [], active = -1, picked = false;
     const items = () => [...list.querySelectorAll('li[data-k]')];
     const self = this;
-
-    function close() {
-      list.hidden = true; active = -1;
-      input.setAttribute('aria-expanded', 'false');
-    }
+    function close() { list.hidden = true; active = -1; input.setAttribute('aria-expanded', 'false'); }
     function highlightItem(i) {
       active = i;
       items().forEach((li, k) => li.classList.toggle('active', k === i));
@@ -123,7 +103,6 @@ const SEARCH = {
       close();
       opts.onPick(r.entry);
     }
-
     input.addEventListener('input', () => { picked = false; if (opts.onType) opts.onType(); open(false); });
     input.addEventListener('focus', () => {
       picked = !!opts.isPicked && opts.isPicked();

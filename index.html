@@ -31,6 +31,7 @@
   <button type="button" class="tab active" data-view="laskuView">Lasku</button>
   <button type="button" class="tab" data-view="selfView" id="tabSelf" hidden>Itselaskutus</button>
   <button type="button" class="tab" data-view="roadView" id="tabRoad" hidden>Tiekunta</button>
+  <button type="button" class="tab" data-view="drainView" id="tabDrain" hidden>Ojitusyhteisö</button>
   <button type="button" class="tab" data-view="rekisteriView">Rekisteri</button>
   <button type="button" class="tab" data-view="arkistoView">Arkisto</button>
 </nav>
@@ -44,7 +45,6 @@
 
 <!-- ======================= LASKU ======================= -->
 <section id="laskuView" class="view active">
-
   <div class="card done" id="doneCard" hidden>
     <div class="done-title" id="doneTitle"></div>
     <div class="small" id="doneText"></div>
@@ -153,15 +153,13 @@
 <!-- ======================= TIEKUNTA ======================= -->
 <section id="roadView" class="view">
   <div class="card">
-    <div class="card-h">Tiekunnan laskutus</div>
-    <p class="small muted">Osakkaat ja tieyksiköt luetaan rekisterin Tiekuntaosakkaat-välilehdeltä, maksun perusteet Tiekunnat-välilehdeltä.</p>
+    <div class="card-h"><span id="roadTitle">Tiekunnan laskutus</span></div>
+    <p class="small muted">Kiinteistöt, maksajat ja tieyksiköt luetaan rekisterin Tiekunta-välilehdeltä. Jokainen maksaja saa yhden laskun kaikista kiinteistöistään.</p>
     <div class="grid2">
-      <label>Tiekunta
-        <select id="roadSel"></select>
-      </label>
       <label>Laskuttaja <span class="hint">(tiekunnan tili)</span>
         <select id="roadBiller" data-biller></select>
       </label>
+      <label>Ensimmäinen laskunumero<input type="text" id="roadFirstNo"></label>
     </div>
     <div class="grid3">
       <label>Laskun päivä
@@ -172,11 +170,8 @@
         <span class="datebox"><input type="text" id="roadDue" class="dfield" placeholder="pp.kk.vvvv" inputmode="decimal" autocomplete="off"><input type="date" class="dpick" data-for="roadDue" tabindex="-1" aria-label="Valitse eräpäivä kalenterista"></span>
       </label>
     </div>
-    <div class="grid2">
-      <label>Ensimmäinen laskunumero<input type="text" id="roadFirstNo"></label>
-    </div>
-    <label>Lisäteksti kaikille laskuille
-      <textarea id="roadNote" rows="2"></textarea>
+    <label>Lisäteksti kaikille laskuille <span class="hint">(oletus rekisterin kohdasta Laskun lisäteksti)</span>
+      <textarea id="roadNote" rows="4"></textarea>
     </label>
   </div>
   <div class="card">
@@ -190,11 +185,47 @@
   <div id="roadStatus" class="status" aria-live="polite"></div>
 </section>
 
+<!-- ======================= OJITUSYHTEISÖ ======================= -->
+<section id="drainView" class="view">
+  <div class="card">
+    <div class="card-h"><span id="drainTitle">Ojitusyhteisön laskutus</span></div>
+    <p class="small muted">Tilat, maksajat ja osuudet luetaan rekisterin Ojitusyhteisö-välilehdeltä. Jokainen maksaja saa yhden laskun kaikista tiloistaan ja kuivatusalueistaan.</p>
+    <div class="grid2">
+      <label>Laskuttaja <span class="hint">(ojitusyhteisön tili)</span>
+        <select id="drainBiller" data-biller></select>
+      </label>
+      <label>Ensimmäinen laskunumero<input type="text" id="drainFirstNo"></label>
+    </div>
+    <div class="grid3">
+      <label>Laskun päivä
+        <span class="datebox"><input type="text" id="drainDate" class="dfield" placeholder="pp.kk.vvvv" inputmode="decimal" autocomplete="off"><input type="date" class="dpick" data-for="drainDate" tabindex="-1" aria-label="Valitse päivä kalenterista"></span>
+      </label>
+      <label>Maksuehto (pv)<input type="number" id="drainTerms" min="0" inputmode="numeric"></label>
+      <label>Eräpäivä
+        <span class="datebox"><input type="text" id="drainDue" class="dfield" placeholder="pp.kk.vvvv" inputmode="decimal" autocomplete="off"><input type="date" class="dpick" data-for="drainDue" tabindex="-1" aria-label="Valitse eräpäivä kalenterista"></span>
+      </label>
+    </div>
+    <div class="set-title">Laskutettava summa kuivatusalueittain <span class="hint">(oletus rekisteristä · tyhjä tai 0 = aluetta ei laskuteta)</span></div>
+    <div class="grid3" id="drainAreas"></div>
+    <label>Lisäteksti kaikille laskuille <span class="hint">(oletus rekisterin kohdasta Laskun lisäteksti)</span>
+      <textarea id="drainNote" rows="3"></textarea>
+    </label>
+  </div>
+  <div class="card">
+    <div class="card-h">Muodostettavat laskut <button type="button" class="mini" id="btnDrainReload" title="Lukee rekisterin uudelleen">Päivitä</button></div>
+    <div id="drainSummary" class="small"></div>
+    <div id="drainList"></div>
+  </div>
+  <div class="card actions">
+    <button type="button" class="btn primary" id="btnDrainAll">Muodosta kaikki laskut</button>
+  </div>
+  <div id="drainStatus" class="status" aria-live="polite"></div>
+</section>
+
 <!-- ======================= REKISTERI ======================= -->
 <section id="rekisteriView" class="view">
   <div class="card">
     <div class="card-h">Rekisteri OneDrivessa</div>
-
     <div id="folderMode" hidden>
       <p class="small">Valitse tietokoneen OneDrive-kansiosta <b>Laskutus</b>-kansio. Ohjelma lukee rekisterin ja tallentaa laskut suoraan sinne, ja OneDrive synkronoi ne puhelimeen.</p>
       <div class="kv"><span>Kansio</span><b id="folderName">–</b></div>
@@ -206,7 +237,6 @@
         <button type="button" class="btn ghost" id="btnReloadReg">Lataa rekisteri uudelleen</button>
       </div>
     </div>
-
     <div id="fileMode" hidden>
       <p class="small">Valitse rekisteri-Excel. Valitsimessa OneDrive näkyy sijaintina (Android: valikko ☰ → OneDrive, iPhone: Tiedostot → OneDrive). Rekisteri muistetaan tällä laitteella, kunnes päivität sen.</p>
       <div class="kv"><span>Tiedosto</span><b id="fileName">–</b></div>
@@ -215,7 +245,6 @@
       </div>
     </div>
   </div>
-
   <div class="card">
     <div class="card-h">Sisältö</div>
     <div id="regSummary" class="small">Rekisteriä ei ole ladattu.</div>
@@ -226,8 +255,8 @@
         <p><b>Tuoterekisteri</b>: Tuotekoodi, Tuote, Yksikkö, Hinta, alv 0%, ALV</p>
         <p><b>Laskuttajarekisteri</b>: kentät riveillä (sarake A), jokainen laskuttaja omassa sarakkeessaan (B, C, …)</p>
         <p><b>Itselaskutus</b> (erityisominaisuus): Käytössä, Nimi, Osoite, Postinumero, Postitoimipaikka, Sähköposti, Tilinumero, Selite, Määrä, Yksikkö, Hinta, alv 0%, ALV</p>
-        <p><b>Tiekunnat</b> (erityisominaisuus): Tiekunta-ID, Tiekunnan nimi, Käytössä, Laskutusvuosi, Laskentatapa, Kokonaisbudjetti, Yksikköhinta, Perusmaksu, ALV, Laskurivin teksti</p>
-        <p><b>Tiekuntaosakkaat</b> (erityisominaisuus): Tiekunta-ID, Osakasnumero, Käytössä, Asiakasnumero, Osakas / nimi, Kiinteistötunnus, Osoite, Postinumero, Postitoimipaikka, Maa, Sähköposti, Tieyksiköt, Muu maksu, Lisätieto</p>
+        <p><b>Tiekunta</b> (erityisominaisuus, yksi tiekunta per rekisteri): ylhäällä tiekunnan tiedot ja maksuperusteet, alla tieyksikköluettelo – Käytössä, Kiinteistö, Maksaja, Osoite, Postinumero, Postitoimipaikka, Sähköposti, Tienkäyttöyksikkö, Liikennelaji, Yksiköiden lkm, Painoluku, Matka (km), Matkan korjauskerroin, Painoluvun korjauskerroin, Lisätieto</p>
+        <p><b>Ojitusyhteisö</b> (erityisominaisuus, yksi ojitusyhteisö per rekisteri): ylhäällä yhteisön tiedot ja kuivatusalueiden laskutettavat summat, alla osakasluettelo – Käytössä, Kuivatusalue, Kiinteistötunnus, Tilan nimi, Maksaja, Laskutusvastaanottaja, Osoite, Postinumero, Postitoimipaikka, Sähköposti, Muunnettu hyötyala (mha), Osuus %, Lisätieto</p>
       </div>
     </details>
   </div>
@@ -250,7 +279,6 @@
 <!-- ======================= ASETUKSET ======================= -->
 <dialog id="settingsDialog">
   <h2>Asetukset</h2>
-
   <div class="set-title">Laskun ulkoasu</div>
   <label class="chk"><input type="radio" name="pdfStyle" id="cfgStyleBw" value="bw"> Mustavalkoinen</label>
   <label class="chk"><input type="radio" name="pdfStyle" id="cfgStyleColor" value="color"> Korostusväri
@@ -268,7 +296,9 @@
   <label class="chk"><input type="checkbox" id="cfgFeatSelf"> Itselaskutus</label>
   <p class="small muted">Lisää Itselaskutus-välilehden. Saajat ja rivit luetaan rekisterin Itselaskutus-välilehdeltä. Itselaskutuksesta ja laskun hyväksymismenettelystä on sovittava myyjän kanssa.</p>
   <label class="chk"><input type="checkbox" id="cfgFeatRoad"> Tiekunnan laskutus</label>
-  <p class="small muted">Lisää Tiekunta-välilehden. Osakaslista ja tieyksiköt luetaan rekisterin Tiekunnat- ja Tiekuntaosakkaat-välilehdiltä.</p>
+  <p class="small muted">Lisää Tiekunta-välilehden. Tiekunnan tiedot ja tieyksikköluettelo luetaan rekisterin Tiekunta-välilehdeltä. Yksi rekisteri = yksi tiekunta.</p>
+  <label class="chk"><input type="checkbox" id="cfgFeatDrain"> Ojitusyhteisön laskutus</label>
+  <p class="small muted">Lisää Ojitusyhteisö-välilehden. Kuivatusalueet, summat ja osakkaiden osuudet luetaan rekisterin Ojitusyhteisö-välilehdeltä. Yksi rekisteri = yksi ojitusyhteisö.</p>
   <div id="selfMailSettings">
     <label>Itselaskutuksen sähköpostin otsikko <span class="hint">{nro} {laskuttaja}</span>
       <input type="text" id="cfgSelfMailSubject">
@@ -310,10 +340,9 @@
     <summary>Miten ohjelma toimii</summary>
     <p><b>Tietokone:</b> valitse kerran OneDriven Laskutus-kansio. Laskut tallentuvat kansioon automaattisesti ja laskunumero pidetään tiedostossa laskutus-tila.json.</p>
     <p><b>Puhelin:</b> valitse rekisteri-Excel OneDrivesta. Tallenna lasku avaa jakovalikon: valitse OneDrive ja kansio Laskutus/Laskut/vuosi. Jaa PDF → sähköpostiohjelma liittää laskun suoraan viestiin.</p>
-    <p><b>Laskunumero puhelimella:</b> puhelin ei näe tietokoneen viimeisintä numeroa. Tarkista numero, jos olet laskuttanut samana päivänä myös tietokoneella.</p>
     <p><b>Päivämäärät:</b> kirjoita muodossa pp.kk.vvvv (esim. 5.12.2026, 5.12.26 tai 051226) tai valitse kalenterista.</p>
     <p><b>Viivakoodi:</b> tulostuu, kun ensimmäinen tilinumero on suomalainen (FI) IBAN, valuutta on euro ja summa on alle miljoona euroa.</p>
-    <p><b>Erälaskut:</b> itselaskutukset ja tiekunnan laskut tallentuvat tietokoneella kansioon Laskut/vuosi/Itselaskutus/erä tai Laskut/vuosi/Tiekunnat/tiekunta yhdessä yhteenveto.csv-tiedoston kanssa.</p>
+    <p><b>Tiekunta:</b> useammalle tiekunnalle tehdään oma rekisteritiedosto kullekin ja valitaan rekisteri Rekisteri-välilehdeltä.</p>
   </details>
 
   <div class="dlg-btns">
