@@ -3,12 +3,12 @@
 const $ = (id) => document.getElementById(id);
 const cfg = CFG.data;
 
-const REG_CACHE = 'laskutus.reg.v1';       // puhelimen välimuisti rekisteristä
+const REG_CACHE = 'laskutus.reg.v2';       // puhelimen välimuisti rekisteristä
 const STATE_LOCAL = 'laskutus.state.v1';   // puhelimen laskunumerot
 const LOGO_KEY = 'laskutus.logo.v1';       // asetuksista valittu logo (dataURL)
 const STATE_FILE = 'laskutus-tila.json';   // tietokoneella Laskutus-kansiossa
 
-let REG = { customers: [], products: [], billers: [], source: '', loaded: '' };
+let REG = { customers: [], products: [], billers: [], self: [], roads: [], roadMembers: [], source: '', loaded: '' };
 let ROWS = [];
 let STATE = { next: {}, log: [] };
 let LAST = null;           // viimeksi tallennettu lasku {inv, blob, name, path}
@@ -23,7 +23,7 @@ function status(msg, kind = '') {
   el.textContent = msg || '';
 }
 const norm = (s) => String(s ?? '').toLowerCase().trim()
-  .replace(/ä/g, 'a').replace(/ö/g, 'o').replace(/å/g, 'a').replace(/[\s_.\-:,()%]/g, '');
+  .replace(/ä/g, 'a').replace(/ö/g, 'o').replace(/å/g, 'a').replace(/[\s_.\-:,()%/]/g, '');
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const str = (v) => String(v ?? '').trim();
 
@@ -47,6 +47,12 @@ function zipFi(v, country) {
   if (/^\d{1,4}$/.test(s) && (!country || /suomi|finland/i.test(country))) return s.padStart(5, '0');
   return s;
 }
+/* Excelin Kyllä/Ei; tyhjä = oletus */
+function yes(v, dflt = true) {
+  const s = norm(v);
+  if (!s) return dflt;
+  return ['kylla', 'k', 'x', 'yes', 'y', '1', 'true', 'tosi'].includes(s);
+}
 function nowFi() {
   return new Date().toLocaleString('fi-FI', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
@@ -59,6 +65,7 @@ function pdfOpts() {
 /* Päivämäärät: kentät muodossa pp.kk.vvvv, sisäisesti ISO               */
 /* ===================================================================== */
 const DATE_IDS = ['laskupvm', 'erapvm', 'toimituspvm'];
+const DATE_HOOKS = {};     // id -> funktio, jota kutsutaan kun päivä muuttuu
 
 /* ISO tai '' (tyhjä tai virheellinen) */
 function getD(id) {
@@ -85,10 +92,11 @@ function onDateChanged(id) {
     const a = getD('laskupvm'), b = getD('erapvm');
     if (a && b) $('maksuehto').value = Math.max(0, INV.daysBetween(a, b));
   }
+  if (DATE_HOOKS[id]) DATE_HOOKS[id]();
 }
 function initDateFields() {
-  DATE_IDS.forEach(id => {
-    const el = $(id);
+  document.querySelectorAll('.dfield').forEach(el => {
+    const id = el.id;
     el.addEventListener('change', () => {
       if (normalizeD(id) === null) status('Tarkista päivämäärä – muoto pp.kk.vvvv.', 'err');
       else { status(''); onDateChanged(id); }
@@ -112,7 +120,8 @@ function initDateFields() {
 /* Rekisterin luku                                                       */
 /* ===================================================================== */
 function findSheet(wb, names) {
-  return wb.SheetNames.find(n => names.some(m => norm(n).includes(norm(m))));
+  return wb.SheetNames.find(n => names.some(m => norm(n) === norm(m))) ||
+         wb.SheetNames.find(n => names.some(m => norm(n).includes(norm(m))));
 }
 function sheetRows(wb, names) {
   const n = findSheet(wb, names);
@@ -201,11 +210,66 @@ function parseWorkbook(buf, source) {
     vat: pick(r, ['ALV', 'ALV %']) === '' ? null : num(pick(r, ['ALV', 'ALV %']))
   })).filter(p => p.name);
 
+  /* --- erityisominaisuudet --- */
+  // Itselaskutus: jokainen rivi on täydellinen (saajan tiedot toistetaan)
+  const self = sheetRows(wb, ['itselaskutus']).map((r, i) => {
+    const qtyRaw = pick(r, ['Määrä']);
+    const vatRaw = pick(r, ['ALV', 'ALV %']);
+    return {
+      row: i + 2,
+      active: yes(pick(r, ['Käytössä'])),
+      name: str(pick(r, ['Nimi', 'Saaja'])),
+      addr: str(pick(r, ['Osoite', 'Lähiosoite'])),
+      zip: zipFi(pick(r, ['Postinumero'])),
+      city: str(pick(r, ['Postitoimipaikka'])),
+      email: str(pick(r, ['Sähköposti'])),
+      iban: str(pick(r, ['Tilinumero', 'IBAN'])).toUpperCase(),
+      desc: str(pick(r, ['Selite', 'Tuote'])),
+      qty: str(qtyRaw) === '' ? 1 : num(qtyRaw),
+      unit: str(pick(r, ['Yksikkö'])),
+      price: num(pick(r, ['Hinta, alv 0%', 'Hinta alv 0%', 'Hinta'])),
+      vat: str(vatRaw) === '' ? null : num(vatRaw),
+      priceEmpty: str(pick(r, ['Hinta, alv 0%', 'Hinta alv 0%', 'Hinta'])) === ''
+    };
+  }).filter(x => x.name || x.desc || !x.priceEmpty);
+
+  const roads = sheetRows(wb, ['tiekunnat']).map(r => ({
+    id: str(pick(r, ['Tiekunta-ID', 'Tiekunta'])),
+    name: str(pick(r, ['Tiekunnan nimi', 'Nimi'])),
+    active: yes(pick(r, ['Käytössä'])),
+    year: str(pick(r, ['Laskutusvuosi', 'Vuosi'])),
+    method: norm(pick(r, ['Laskentatapa'])).startsWith('yksikko') ? 'unit' : 'budget',
+    budget: num(pick(r, ['Kokonaisbudjetti', 'Budjetti'])),
+    unitPrice: num(pick(r, ['Yksikköhinta'])),
+    baseFee: num(pick(r, ['Perusmaksu'])),
+    vat: num(pick(r, ['ALV', 'ALV %'])),
+    text: str(pick(r, ['Laskurivin teksti'])),
+    info: str(pick(r, ['Lisätieto']))
+  })).filter(x => x.id && x.name);
+
+  const roadMembers = sheetRows(wb, ['tiekuntaosakkaat', 'osakkaat']).map((r, i) => ({
+    row: i + 2,
+    roadId: str(pick(r, ['Tiekunta-ID', 'Tiekunta'])),
+    memberNo: str(pick(r, ['Osakasnumero'])),
+    active: yes(pick(r, ['Käytössä'])),
+    custId: str(pick(r, ['Asiakasnumero'])),
+    name: str(pick(r, ['Osakas / nimi', 'Osakas', 'Nimi'])),
+    estate: str(pick(r, ['Kiinteistötunnus'])),
+    addr: str(pick(r, ['Osoite', 'Lähiosoite'])),
+    zip: zipFi(pick(r, ['Postinumero']), str(pick(r, ['Maa']))),
+    city: str(pick(r, ['Postitoimipaikka'])),
+    country: str(pick(r, ['Maa'])),
+    email: str(pick(r, ['Sähköposti'])),
+    units: num(pick(r, ['Tieyksiköt'])),
+    other: num(pick(r, ['Muu maksu'])),
+    info: str(pick(r, ['Lisätieto']))
+  })).filter(x => x.roadId && (x.name || x.custId || x.units));
+
   const billers = parseBillers(wb);
   if (!customers.length && !products.length && !billers.length) {
     throw new Error('Tiedostosta ei löytynyt Asiakas-, Tuote- tai Laskuttajarekisteriä.');
   }
-  return { customers, products, billers, source, loaded: nowFi() };
+  return { customers, products, billers, self, roads, roadMembers, source, loaded: nowFi() };
 }
 
 function setRegistry(reg) {
@@ -232,7 +296,7 @@ async function loadState() {
 
 async function saveState() {
   STATE.updated = new Date().toISOString();
-  if (STATE.log.length > 500) STATE.log = STATE.log.slice(-500);
+  if (STATE.log.length > 2000) STATE.log = STATE.log.slice(-2000);
   if (ST.mode === 'folder') await ST.writeJson(STATE_FILE, STATE);
   else localStorage.setItem(STATE_LOCAL, JSON.stringify(STATE));
 }
@@ -251,35 +315,42 @@ function patternRegex(prefix) {
     if (/^\{\w+\}$/.test(x)) return '.*?';
     return x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   }).join('');
-  return new RegExp('^' + rx + '$', 'i');
+  return new RegExp('^(?:Itse)?' + rx + '$', 'i');
 }
 
-/* Tietokoneella: suurin olemassa oleva laskunumero laskukansiosta (myös puhelimella tehdyt) */
+/* Tietokoneella: suurin olemassa oleva laskunumero laskukansiosta alikansioineen */
 async function scanMaxNumber(b) {
   if (ST.mode !== 'folder' || !READY) return 0;
   // jos usealla laskuttajalla on sama etuliite, laskuja ei voi erottaa tiedostonimestä
   if (REG.billers.filter(x => (x.prefix || '') === (b.prefix || '')).length > 1) return 0;
   const rx = patternRegex(b.prefix || '');
   const y = new Date().getFullYear();
-  const folders = cfg.yearFolders ? [`${cfg.outFolder}/${y}`, `${cfg.outFolder}/${y - 1}`] : [cfg.outFolder];
+  const roots = cfg.yearFolders ? [`${cfg.outFolder}/${y}`, `${cfg.outFolder}/${y - 1}`] : [cfg.outFolder];
   let max = 0;
-  for (const f of folders) {
+  const walk = async (f, depth) => {
     for (const e of await ST.list(f)) {
+      if (e.kind === 'directory' && depth < 2) await walk(f + '/' + e.name, depth + 1);
       if (e.kind !== 'file') continue;
       const m = e.name.match(rx);
       if (m) max = Math.max(max, Number(m[1]));
     }
-  }
+  };
+  for (const f of roots) await walk(f, 0);
   return max;
+}
+
+/* Seuraava vapaa numero laskuttajalle (numero, ilman etuliitettä) */
+async function nextNumberFor(b) {
+  if (!b) return 1;
+  const fromState = Number(STATE.next[billerKey(b)]) || 0;
+  const scanned = await scanMaxNumber(b);
+  return Math.max(b.nextNumber || 1, fromState, scanned + 1);
 }
 
 async function suggestNumber() {
   const b = currentBiller();
   if (!b) return;
-  const fromState = Number(STATE.next[billerKey(b)]) || 0;
-  const scanned = await scanMaxNumber(b);
-  const n = Math.max(b.nextNumber || 1, fromState, scanned + 1);
-  $('laskunro').value = (b.prefix || '') + n;
+  $('laskunro').value = (b.prefix || '') + await nextNumberFor(b);
   updateRef();
   $('numberHint').textContent = ST.mode === 'file'
     ? 'Puhelin ehdottaa numeroa tällä laitteella tehtyjen laskujen perusteella – tarkista, jos olet laskuttanut myös tietokoneella.'
@@ -296,11 +367,15 @@ function numberPart(nro, b) {
 /* ===================================================================== */
 /* Rekisterin näyttö                                                     */
 /* ===================================================================== */
+function billerOptions() {
+  return REG.billers.map((b, i) =>
+    `<option value="${i}">${esc(b.name)}${b.sellerNo ? ' (' + esc(b.sellerNo) + ')' : ''}</option>`).join('');
+}
+
 function fillRegistry() {
   // laskuttajat
   const bs = $('laskuttaja');
-  bs.innerHTML = REG.billers.map((b, i) =>
-    `<option value="${i}">${esc(b.name)}${b.sellerNo ? ' (' + esc(b.sellerNo) + ')' : ''}</option>`).join('');
+  bs.innerHTML = billerOptions();
   const lastIdx = REG.billers.findIndex(b => billerKey(b) === cfg.lastBiller);
   bs.value = String(lastIdx >= 0 ? lastIdx : 0);
   $('billerWrap').hidden = REG.billers.length <= 1;
@@ -314,10 +389,14 @@ function fillRegistry() {
 
   // yhteenveto
   const has = REG.customers.length || REG.products.length || REG.billers.length;
+  const extra = [];
+  if (cfg.featSelf) extra.push(`<span class="pill">${(REG.self || []).length} itselaskutusriviä</span>`);
+  if (cfg.featRoad) extra.push(`<span class="pill">${(REG.roads || []).length} tiekuntaa · ${(REG.roadMembers || []).length} osakasta</span>`);
   $('regSummary').innerHTML = has
     ? `<span class="pill">${REG.customers.length} asiakasta</span>` +
       `<span class="pill">${REG.products.length} tuotetta</span>` +
       `<span class="pill">${REG.billers.length} laskuttaja${REG.billers.length === 1 ? '' : 'a'}</span>` +
+      extra.join('') +
       `<div class="muted">${esc(REG.source)} · luettu ${esc(REG.loaded)}</div>` +
       (REG.billers.length ? '' : '<div class="status err">Laskuttajarekisteri puuttuu tai on tyhjä.</div>')
     : 'Rekisteriä ei ole ladattu.';
@@ -325,6 +404,7 @@ function fillRegistry() {
 
   renderRows();
   applyBiller();
+  if (typeof BATCH !== 'undefined') BATCH.refresh();
 }
 
 async function applyBiller() {
@@ -478,7 +558,9 @@ $('rivit').addEventListener('input', (e) => {
   if (tot) tot.textContent = INV.money(INV.lineTotal(ROWS[i]));
   calc();
 });
-
+$('rivit').addEventListener('change', (e) => {
+  if (e.target.dataset.f === 'vat') { ROWS[e.target.dataset.i].vat = num(e.target.value); calc(); }
+});
 
 $('rivit').addEventListener('click', (e) => {
   const d = e.target.dataset.del;
@@ -509,7 +591,7 @@ function updateRef() {
 async function logoFor(b) {
   const own = localStorage.getItem(LOGO_KEY);
   if (own) return own;
-  if (ST.mode === 'folder' && READY && b.logo) {
+  if (ST.mode === 'folder' && READY && b && b.logo) {
     try {
       const f = await ST.readFile(b.logo);
       return await new Promise((res, rej) => {
@@ -553,7 +635,7 @@ function validate(inv) {
 
 function fileNameFor(inv) {
   const t = INV.totals(inv.lines);
-  return safeName(
+  const base = safeName(
     (cfg.filePattern || 'Lasku_{nro}_{asiakas}.pdf')
       .replace(/\{nro\}/g, inv.number)
       .replace(/\{asiakas\}/g, inv.customer.name)
@@ -561,6 +643,7 @@ function fileNameFor(inv) {
       .replace(/\{vuosi\}/g, inv.date.slice(0, 4))
       .replace(/\{summa\}/g, t.gross.toFixed(2))
   ).replace(/\.pdf$/i, '') + '.pdf';
+  return inv.kind === 'self' ? 'Itse' + base : base;
 }
 
 function outFolderFor(inv) {
@@ -569,6 +652,16 @@ function outFolderFor(inv) {
 
 function mailTexts(inv) {
   const t = INV.totals(inv.lines);
+  if (inv.kind === 'self') {
+    const rep = (s) => String(s || '')
+      .replace(/\{nro\}/g, inv.number)
+      .replace(/\{laskuttaja\}/g, inv.sender.name || '')
+      .replace(/\{selite\}/g, inv.lines.map(l => l.desc).filter(Boolean).join(', '))
+      .replace(/\{erapaiva\}/g, INV.dateFi(inv.due))
+      .replace(/\{summa\}/g, INV.money(t.gross, inv.sender.currency))
+      .replace(/\{tilinumero\}/g, inv.customer.iban || '');
+    return { subject: rep(cfg.selfMailSubject), body: rep(cfg.selfMailBody) };
+  }
   const vcode = INV.virtualBarcode(inv.sender.iban, t.gross, inv.reference, inv.due, inv.sender.currency);
   // jos virtuaaliviivakoodia ei voi muodostaa (esim. ulkomainen tili), sen rivi jätetään pois
   const strip = (s) => vcode ? String(s || '') : String(s || '')
@@ -582,6 +675,16 @@ function mailTexts(inv) {
     .replace(/\{viite\}/g, inv.reference)
     .replace(/\{virtuaaliviivakoodi\}/g, vcode);
   return { subject: rep(cfg.mailSubject), body: rep(cfg.mailBody) };
+}
+
+function mailtoHref(inv) {
+  const [to, ...cc] = inv.emails || [];
+  const { subject, body } = mailTexts(inv);
+  const q = [];
+  if (cc.length) q.push('cc=' + encodeURIComponent(cc.join(',')));
+  q.push('subject=' + encodeURIComponent(subject));
+  q.push('body=' + encodeURIComponent(body));
+  return 'mailto:' + encodeURIComponent(to || '') + '?' + q.join('&');
 }
 
 /* ===================================================================== */
@@ -667,14 +770,16 @@ $('btnSave').onclick = async () => {
   status('');
 };
 
-async function recordInvoice(r, b, n, path) {
+/* Kirjaa laskun lokiin ja kasvattaa laskuttajan numerointia. save=false: tallennus myöhemmin (erät) */
+async function recordInvoice(r, b, n, path, save = true) {
   const key = billerKey(b);
   if (n) STATE.next[key] = Math.max(Number(STATE.next[key]) || 0, n + 1);
   STATE.log.push({
     nro: r.inv.number, pvm: r.inv.date, erapaiva: r.inv.due,
     asiakas: r.inv.customer.name, summa: INV.totals(r.inv.lines).gross,
-    laskuttaja: b ? b.name : '', tiedosto: path || r.name
+    laskuttaja: b ? b.name : '', tyyppi: r.inv.kind || 'normal', tiedosto: path || r.name
   });
+  if (!save) return;
   try { await saveState(); } catch (e) { console.warn('Tilan tallennus epäonnistui', e); }
   if (ST.mode === 'folder') refreshArchive().catch(() => {});
   else renderLocalArchive();
@@ -702,30 +807,24 @@ function copyText(t) {
 
 /* Jaa PDF: sähköpostiohjelma saa laskun liitteenä. Osoitteet kopioidaan leikepöydälle,
    koska jakovalikko ei välitä vastaanottajia. */
-$('btnShare').onclick = async () => {
-  if (!LAST) return;
-  const addr = LAST.inv.emails.join('; ');
+async function sharePdf(item, statusFn = status) {
+  const addr = (item.inv.emails || []).join('; ');
   if (addr) copyText(addr).catch(() => {});
-  const { subject, body } = mailTexts(LAST.inv);
-  const file = new File([LAST.blob], LAST.name, { type: 'application/pdf' });
+  const { subject, body } = mailTexts(item.inv);
+  const file = new File([item.blob], item.name, { type: 'application/pdf' });
   try {
     await ST.share(file, subject, body);
-    status(addr ? `Vastaanottajat kopioitu leikepöydälle: ${addr}` : '', 'ok');
+    statusFn(addr ? `Vastaanottajat kopioitu leikepöydälle: ${addr}` : '', 'ok');
   } catch (e) {
-    if (e.name !== 'AbortError') status('Jako epäonnistui: ' + e.message, 'err');
+    if (e.name !== 'AbortError') statusFn('Jako epäonnistui: ' + e.message, 'err');
   }
-};
+}
+$('btnShare').onclick = () => { if (LAST) sharePdf(LAST); };
 
 /* Avaa sähköposti: vastaanottajat, otsikko ja viesti valmiina; PDF liitetään itse */
 $('btnMail').onclick = () => {
   if (!LAST) return;
-  const [to, ...cc] = LAST.inv.emails;
-  const { subject, body } = mailTexts(LAST.inv);
-  const q = [];
-  if (cc.length) q.push('cc=' + encodeURIComponent(cc.join(',')));
-  q.push('subject=' + encodeURIComponent(subject));
-  q.push('body=' + encodeURIComponent(body));
-  location.href = 'mailto:' + encodeURIComponent(to || '') + '?' + q.join('&');
+  location.href = mailtoHref(LAST.inv);
   status(LAST.path
     ? `Liitä viestiin tiedosto ${LAST.name} (OneDrive › ${ST.folderName()}/${LAST.path.split('/').slice(0, -1).join('/')}).`
     : `Liitä viestiin tiedosto ${LAST.name}.`, 'ok');
@@ -892,12 +991,17 @@ async function refreshArchive() {
     folder += '/' + keep;
   } else ys.hidden = true;
 
+  // laskut + erälaskujen alikansiot (Itselaskutus/…, Tiekunnat/…)
   const files = [];
-  for (const e of await ST.list(folder)) {
-    if (e.kind !== 'file' || !/\.pdf$/i.test(e.name)) continue;
-    const f = await e.handle.getFile();
-    files.push({ name: e.name, handle: e.handle, mod: f.lastModified });
-  }
+  const walk = async (f, prefix, depth) => {
+    for (const e of await ST.list(f)) {
+      if (e.kind === 'directory' && depth < 2) { await walk(f + '/' + e.name, prefix + e.name + ' / ', depth + 1); continue; }
+      if (e.kind !== 'file' || !/\.pdf$/i.test(e.name)) continue;
+      const fl = await e.handle.getFile();
+      files.push({ name: prefix + e.name, handle: e.handle, mod: fl.lastModified });
+    }
+  };
+  await walk(folder, '', 0);
   files.sort((a, b) => b.mod - a.mod);
   ul.innerHTML = files.length
     ? files.map((f, i) => `<li><button type="button" data-f="${i}">${esc(f.name)}</button>
@@ -916,7 +1020,7 @@ function renderLocalArchive() {
   const log = (STATE.log || []).slice().reverse();
   ul.innerHTML = '<li class="muted small">Puhelimella tehdyt laskut löytyvät OneDrivesta. Alla tällä laitteella luodut:</li>' +
     (log.length
-      ? log.map(l => `<li><span>${esc(l.nro)} · ${esc(l.asiakas)}</span>
+      ? log.map(l => `<li><span>${l.tyyppi === 'self' ? 'Itselasku ' : ''}${esc(l.nro)} · ${esc(l.asiakas)}</span>
           <span class="muted small">${INV.dateFi(l.pvm)} · ${INV.money(l.summa)}</span></li>`).join('')
       : '<li class="muted">Ei laskuja.</li>');
 }
@@ -927,11 +1031,14 @@ function renderLocalArchive() {
 const SET_MAP = {
   cfgRegFile: 'regFile', cfgOutFolder: 'outFolder', cfgYearFolders: 'yearFolders',
   cfgFilePattern: 'filePattern', cfgMailSubject: 'mailSubject', cfgMailBody: 'mailBody',
-  cfgPdfColor: 'pdfColor', cfgBarcode: 'barcode', cfgVatRates: 'vatRates'
+  cfgPdfColor: 'pdfColor', cfgBarcode: 'barcode', cfgVatRates: 'vatRates',
+  cfgFeatSelf: 'featSelf', cfgFeatRoad: 'featRoad',
+  cfgSelfMailSubject: 'selfMailSubject', cfgSelfMailBody: 'selfMailBody'
 };
 
 function syncStyleUi() {
   $('cfgPdfColor').disabled = !$('cfgStyleColor').checked;
+  $('selfMailSettings').hidden = !$('cfgFeatSelf').checked;
 }
 
 function fillSettings() {
@@ -964,15 +1071,26 @@ function readSettings() {
   CFG.save();
 }
 
+/* Erityisominaisuuksien välilehdet näkyvät vain, kun ne on otettu käyttöön */
+function applyFeatures() {
+  $('tabSelf').hidden = !cfg.featSelf;
+  $('tabRoad').hidden = !cfg.featRoad;
+  const act = document.querySelector('.view.active');
+  if (act && ((act.id === 'selfView' && !cfg.featSelf) || (act.id === 'roadView' && !cfg.featRoad))) showView('laskuView');
+}
+
 $('cfgStyleBw').onchange = syncStyleUi;
 $('cfgStyleColor').onchange = syncStyleUi;
+$('cfgFeatSelf').onchange = syncStyleUi;
 $('btnSettings').onclick = () => { fillSettings(); $('settingsDialog').showModal(); };
 $('btnCloseSettings').onclick = () => $('settingsDialog').close();
 $('btnSaveCfg').onclick = async () => {
   const oldReg = cfg.regFile;
   readSettings();
   $('settingsDialog').close();
+  applyFeatures();
   renderRows();
+  fillRegistry();
   status('Asetukset tallennettu.', 'ok');
   if (ST.mode === 'folder' && READY) {
     if (oldReg !== cfg.regFile) { await listRegistryFiles(); await loadRegistryFromFolder(); }
@@ -1007,6 +1125,7 @@ function showView(id) {
   document.querySelectorAll('.tab').forEach(x => x.classList.toggle('active', x.dataset.view === id));
   document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.id === id));
   if (id === 'arkistoView') refreshArchive().catch(() => {});
+  if ((id === 'selfView' || id === 'roadView') && typeof BATCH !== 'undefined') BATCH.refresh();
 }
 document.querySelectorAll('.tab').forEach(t => { t.onclick = () => showView(t.dataset.view); });
 
@@ -1019,7 +1138,7 @@ $('laskuttaja').onchange = () => { ROWS.forEach(r => { if (r.product === '') r.v
 $('maksuehto').oninput = updateDue;
 $('laskunro').oninput = updateRef;
 
-(async function start() {
+async function startApp() {
   if (typeof XLSX === 'undefined' || !window.jspdf) {
     status('Ohjelmakirjastoja ei saatu ladattua. Tarkista verkkoyhteys ja päivitä sivu.', 'err');
   }
@@ -1028,6 +1147,7 @@ $('laskunro').oninput = updateRef;
   $('maksuehto').value = 14;
   updateDue();
   addRow();
+  applyFeatures();
 
   $('folderMode').hidden = ST.mode !== 'folder';
   $('fileMode').hidden = ST.mode !== 'file';
@@ -1041,11 +1161,13 @@ $('laskunro').oninput = updateRef;
     try {
       const cached = JSON.parse(localStorage.getItem(REG_CACHE) || 'null');
       if (cached && (cached.customers || cached.billers)) {
-        REG = cached;
+        REG = { self: [], roads: [], roadMembers: [], ...cached };
         $('fileName').textContent = cached.source;
         fillRegistry();
       } else showSetup('file');
     } catch (_) { showSetup('file'); }
     renderLocalArchive();
   }
-})();
+}
+/* batch.js ladataan app.js:n jälkeen; käynnistys kun kaikki skriptit on luettu */
+window.addEventListener('DOMContentLoaded', () => startApp());

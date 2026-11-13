@@ -15,7 +15,9 @@ ovat käytössä sekä tietokoneella että puhelimella.
 | `search.js` | Asiakas- ja tuotehaku |
 | `invoice.js` | Summat, viitenumero, pankkiviivakoodi ja PDF |
 | `app.js` | Ohjelman logiikka |
+| `batch.js` | Erityisominaisuudet: itselaskutus ja tiekunnan laskutus |
 | `manifest.json`, `icon-*.png`, `apple-touch-icon.png`, `favicon-32.png` | Kotinäytön kuvake |
+| `Laskutus-rekisteri.xlsx` | Rekisteripohja (ei GitHubiin – OneDriven Laskutus-kansioon) |
 
 ## OneDrive-kansio
 
@@ -24,10 +26,17 @@ OneDrive
 └── Laskutus
     ├── Laskutus-rekisteri.xlsx
     ├── laskutus-tila.json        ← ohjelma luo (laskunumerot ja laskuloki)
-    ├── logo.png                  ← valinnainen, nimi Laskuttajarekisteriin
     └── Laskut
         └── 2026
-            └── Lasku_1001_Esimerkki Oy.pdf
+            ├── Lasku_1001_Esimerkki Oy.pdf
+            ├── Itselaskutus
+            │   └── Itselaskutus 11-2026
+            │       ├── ItseLasku_1002_Maija Meikäläinen.pdf
+            │       └── yhteenveto.csv
+            └── Tiekunnat
+                └── Esimerkkitien tiekunta
+                    ├── Lasku_TK-1_Esimerkki Oy.pdf
+                    └── yhteenveto.csv
 ```
 
 ## Tietokone (Edge tai Chrome)
@@ -35,59 +44,55 @@ OneDrive
 1. Paina **Valitse Laskutus-kansio** ja valitse `C:\Users\<nimi>\OneDrive\Laskutus`.
 2. Ohjelma muistaa kansion. Seuraavilla kerroilla selain voi pyytää vahvistuksen (**Salli kansion käyttö**).
 3. **Tallenna lasku** kirjoittaa PDF:n kansioon `Laskut/vuosi`, ja OneDrive synkronoi sen.
-4. Laskunumero ehdotetaan kansion laskujen ja `laskutus-tila.json`-tiedoston perusteella.
-
-Firefox ei tue kansioon tallentamista – siinä ohjelma toimii puhelintilassa.
 
 ## Puhelin
 
-1. **Valitse rekisteri-Excel** OneDrivesta (Android: ☰ → OneDrive, iPhone: Tiedostot → OneDrive).
-   Rekisteri muistetaan laitteella; kun muutat rekisteriä, valitse se uudelleen.
+1. **Valitse rekisteri-Excel** OneDrivesta. Rekisteri muistetaan laitteella.
 2. **Tallenna lasku** avaa jakovalikon: valitse OneDrive ja kansio `Laskutus/Laskut/vuosi`.
 3. **Jaa PDF** → sähköpostiohjelma: lasku liitteenä, vastaanottajat leikepöydällä.
-4. Puhelin ei näe tietokoneen viimeisintä laskunumeroa – tarkista numero, jos laskutat molemmilla samana päivänä.
 
-## Päivämäärät
+## Kirjekuori: E5 (156 × 220 mm), ikkuna 30 × 90 mm
 
-Kentät ovat muodossa **pp.kk.vvvv** selaimen kieliasetuksista riippumatta. Kirjoita esim.
-`5.12.2026`, `5.12.26` tai `051226` – ohjelma muotoilee arvon `05.12.2026`:ksi. Kalenterikuvakkeesta
-saa valitsimen. Eräpäivän muuttaminen päivittää maksuehdon ja päinvastoin.
+A4 taitetaan kerran puoliksi. Ikkuna on 40 mm yläreunasta ja 18 mm vasemmasta reunasta.
+Vastaanottajan osoite on alueella x 22–92 mm, y 41–61,5 mm, joka näkyy ikkunasta, vaikka paperi
+liikkuisi kuoressa. Pitkä osoite rivitetään ja tarvittaessa fonttia pienennetään.
 
-## Asiakas- ja tuotehaku
+## Erityisominaisuudet (Asetukset → Erityisominaisuudet)
 
-Asiakas ja tuote haetaan kirjoittamalla. Haku löytää osan nimestä, asiakasnumeron / tuotekoodin,
-paikkakunnan tai Y-tunnuksen, ja useampi sana rajaa hakua (esim. `maija kauh`). ä ja a sekä ö ja o
-samaistetaan. Jos tarkkaa osumaa ei ole, lista näyttää lähimmät (kirjoitusvirheet).
+Välilehdet **Itselaskutus** ja **Tiekunta** näkyvät vain, kun ominaisuus on otettu käyttöön.
 
-- **Enter** tai napautus valitsee, **↑ ↓** liikkuu listassa, **Esc** sulkee.
-- Asiakaskentästä poistuttaessa valitaan lähin osuma automaattisesti.
-- Tuotekentässä valinta täyttää yksikön, hinnan ja ALV:n ja siirtää kohdistuksen määrään.
-  Jos et valitse listasta, teksti jää vapaaksi laskuriviksi.
+### Itselaskutus
 
-## ALV-kannat
+Rekisterin `Itselaskutus`-välilehti: **Käytössä | Nimi | Osoite | Postinumero | Postitoimipaikka |
+Sähköposti | Tilinumero | Selite | Määrä | Yksikkö | Hinta, alv 0% | ALV**
 
-Laskurivien ALV valitaan alasvetovalikosta. Valikon kannat määritetään asetuksissa kohdassa
-**Laskurivit → ALV-kannat** (oletus `25,5; 13,5; 10; 0`). Jos tuotteen ALV rekisterissä tai
-laskuttajan oletus-ALV puuttuu listasta, se lisätään kyseisen rivin valikkoon, jotta arvo ei muutu huomaamatta.
+- Saajan tiedot toistetaan jokaisella rivillä. Saman saajan (Nimi + Tilinumero) rivit tulevat yhdelle itselaskulle.
+- Ostaja (laskun laatija) valitaan ohjelmassa Laskuttajarekisteristä koko erälle.
+- Ohjelma tarkistaa tilinumeron (IBAN), pakolliset kentät ja ristiriidat (esim. sama saaja eri osoitteella).
+  Virheelliset saajat ohitetaan ja näytetään punaisella.
+- Tyhjä Määrä = 1. ALV on pakollinen. Käytössä = Ei jättää rivin pois.
+- Itselaskussa on merkintä *Itselaskutus*, myyjän osoite ikkunassa ja maksutiedoissa myyjän tilinumero.
+- Itselaskutuksesta ja laskun hyväksymismenettelystä on sovittava myyjän kanssa.
 
-## Ikkunakirjekuori (C5)
+### Tiekunnan laskutus
 
-Vastaanottajan osoite on vasemmalla alueella x 22–88 mm, y 42–62 mm. Kun A4 taitetaan kerran
-puoliksi ja laitetaan C5-ikkunakuoreen (162 × 229 mm), osoite näkyy sekä pienestä ikkunasta
-(35 × 95 mm, 40 mm ylhäältä, 18 mm vasemmalta) että isosta ikkunasta (60 × 90 mm, 15 mm ylhäältä,
-18 mm vasemmalta). Pitkä osoite rivitetään ja tarvittaessa fonttia pienennetään, jotta se pysyy alueella.
-Tarkista ikkunan mitat käyttämästäsi kuoresta – ne vaihtelevat valmistajittain.
+- `Tiekunnat`: Tiekunta-ID, Tiekunnan nimi, Käytössä, Laskutusvuosi, Laskentatapa, Kokonaisbudjetti,
+  Yksikköhinta, Perusmaksu, ALV, Laskurivin teksti, Lisätieto.
+- `Tiekuntaosakkaat`: Tiekunta-ID, Osakasnumero, Käytössä, Asiakasnumero, Osakas / nimi, Kiinteistötunnus,
+  Osoite, Postinumero, Postitoimipaikka, Maa, Sähköposti, Tieyksiköt, Muu maksu, Lisätieto
+  (+ harmaat tarkistuskaavat Osuus %, Tieyksikkömaksu, Perusmaksu, Laskutettava).
+- **Kokonaisbudjetti**: yksikköhinta = budjetti / käytössä olevien osakkaiden tieyksiköt (4 desimaalia).
+  **Yksikköhinta**: tieyksiköt × yksikköhinta. Perusmaksu ja osakkaan muu maksu lisätään omina riveinään.
+- Laskuttajaksi valitaan tiekunta Laskuttajarekisteristä (tiekunnan tilinumero ja numerointi, esim. etuliite `TK-`).
+- Laskuissa on viitenumero ja pankkiviivakoodi kuten tavallisissa laskuissa.
 
-## Lasku (PDF)
+### Erän muodostus
 
-- Asetuksissa: **Mustavalkoinen** (oletus) tai **Korostusväri** omalla värillä.
-- Puuttuvat tiedot (esim. verkkolaskuosoite, toimituspäivä, toinen tili) jätetään kokonaan pois.
-- Pitkät tekstit rivitetään tai fonttia pienennetään, joten tekstit eivät mene päällekkäin.
-- **Pankkiviivakoodi** (Code 128 C, versio 4) ja sen alla **virtuaaliviivakoodi** tulostuvat, kun ensimmäinen
-  tilinumero on FI-alkuinen IBAN ja valuutta euro. Yli 999 999,99 € summa koodataan nollina
-  Pankkiviivakoodi-oppaan mukaisesti. Viivakoodin voi poistaa asetuksista.
-- Oletusviestissä on virtuaaliviivakoodi (`{virtuaaliviivakoodi}`). Jos koodia ei voi muodostaa (esim. ulkomainen tili), rivi jätetään viestistä pois.
-- *Teksti laskulle* on oletuksena tyhjä. Laskuttajarekisterin *Laskun vakioteksti* -kenttää ei käytetä automaattisesti.
+1. Valitse laskuttaja, päivät ja tarkista ensimmäinen laskunumero.
+2. Tarkista kortit (summa, rivit, varoitukset). **Esikatsele** näyttää yksittäisen laskun.
+3. **Muodosta kaikki** – tietokoneella PDF:t ja `yhteenveto.csv` tallentuvat eräkansioon;
+   puhelimessa ne avautuvat jakovalikkoon kerralla.
+4. Lähetä kortin **Sähköposti**- tai **Jaa PDF** -painikkeella.
 
 ## Tietoturva
 
@@ -96,8 +101,5 @@ vain omassa selaimessasi. Ohjelma näkee ainoastaan sen kansion tai tiedoston, j
 
 ## Julkaisu GitHub Pagesiin
 
-1. Vie kaikki tiedostot repositorion juureen (korvaa vanhat, poista mahdollinen `graph.js`).
-2. Settings → Pages → Deploy from branch → `main` / root.
-3. Avaa `https://<käyttäjä>.github.io/<repo>/` tietokoneella ja puhelimella.
-
+Vie kaikki ohjelmatiedostot (ei rekisteri-Exceliä) repositorion juureen ja ota Pages käyttöön.
 Paikallinen testaus: `python -m http.server 8000` → `http://localhost:8000`.

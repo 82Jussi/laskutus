@@ -133,12 +133,14 @@ const ST = {
 
   /* ---------- jako (puhelin, myös Windowsin Edge/Chrome) ---------- */
   canShareFile(file) {
-    try { return !!(navigator.canShare && navigator.canShare({ files: [file] })); }
+    const files = Array.isArray(file) ? file : [file];
+    try { return !!(navigator.canShare && navigator.canShare({ files })); }
     catch (_) { return false; }
   },
 
   async share(file, title, text) {
-    await navigator.share({ files: [file], title, text });
+    const files = Array.isArray(file) ? file : [file];
+    await navigator.share({ files, title, text });
   },
 
   download(blob, name) {

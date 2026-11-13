@@ -4,6 +4,8 @@
  * rivitetään tai fonttia pienennetään, ja rivien korkeus lasketaan ennen
  * piirtämistä, joten tekstit eivät mene päällekkäin. Puuttuvat tiedot jätetään
  * kokonaan pois (otsikko ja kenttä).
+ *
+ * Laskutyypit (inv.kind): 'normal' (oletus), 'self' (itselasku), 'road' (tiekunta).
  */
 
 const C128 = [
@@ -151,8 +153,8 @@ const INV = {
     const L = 16, R = 194, W = R - L;
     const FOOT_Y = 279;                 // alatunnisteen viiva
     const s = inv.sender, c = inv.customer, cur = s.currency;
+    const SELF = inv.kind === 'self';
     const t = this.totals(inv.lines);
-    const self = this;
     const PT = 0.3528;                  // 1 pt mm:nä
 
     /* --- tekstiapurit --- */
@@ -170,7 +172,7 @@ const INV = {
       while (tw(str) > maxW && str.length > 1) str = str.slice(0, -2) + '…';
       doc.text(str, x, y, align === 'right' ? { align: 'right' } : undefined);
     };
-    /* Rivitetty teksti; palauttaa rivit (piirtää vain jos draw) */
+    /* Rivitetty teksti; palauttaa rivit */
     const wrap = (str, maxW, size, style = 'normal') => {
       font(size, style);
       const out = [];
@@ -178,15 +180,14 @@ const INV = {
         const ls = doc.splitTextToSize(p, maxW);
         (ls.length ? ls : ['']).forEach(l => out.push(l));
       });
-      // pakota liian pitkät yksittäiset sanat leveyteen
       return out.map(l => {
         let x = l;
         while (tw(x) > maxW && x.length > 1) x = x.slice(0, -2) + '…';
         return x;
       });
     };
-    const LBL = 7, VAL = 9.5, LH = 4.3;   // otsikon ja arvon fontit, rivinväli
-    /* Kenttäruudukko: [label, value, {bold, size}] – palauttaa käytetyn korkeuden */
+    const LBL = 7, VAL = 9.5;
+    /* Kenttäruudukko: [label, value, {bold, size, single}] – palauttaa käytetyn korkeuden */
     const grid = (fields, x0, y0, cols, colW, draw = true) => {
       let y = y0;
       for (let i = 0; i < fields.length; i += cols) {
@@ -216,21 +217,28 @@ const INV = {
     const pick = (arr) => arr.filter(f => has(f[1]));
 
     /* ===== maksuosan sisältö (lasketaan ensin, jotta tiedetään sen korkeus) ===== */
-    const accounts = [[s.iban, s.bic, s.bank], [s.iban2, s.bic2, s.bank2]].filter(a => has(a[0]));
     const payFields = [];
-    payFields.push(['Saaja', s.name]);
-    payFields.push(['Viitenumero', inv.reference, { single: true }]);
-    payFields.push(['Eräpäivä', this.dateFi(inv.due), { single: true }]);
-    accounts.forEach((a, i) => {
-      payFields.push([`Tilinumero${a[2] ? ' – ' + a[2] : ''}`, a[0], { single: true }]);
-      payFields.push(['BIC', a[1], { single: true }]);
-      if (i === 0) payFields.push(['Maksettava', this.money(t.gross, cur), { single: true, bold: true, size: 11 }]);
-    });
-    if (!accounts.length) payFields.push(['Maksettava', this.money(t.gross, cur), { single: true, bold: true, size: 11 }]);
+    let vcode = '';
+    if (SELF) {
+      payFields.push(['Maksun saaja (myyjä)', c.name]);
+      payFields.push(['Saajan tilinumero', c.iban, { single: true }]);
+      payFields.push(['Maksupäivä', this.dateFi(inv.due), { single: true }]);
+      payFields.push(['Maksetaan', this.money(t.gross, cur), { single: true, bold: true, size: 11 }]);
+    } else {
+      const accounts = [[s.iban, s.bic, s.bank], [s.iban2, s.bic2, s.bank2]].filter(a => has(a[0]));
+      payFields.push(['Saaja', s.name]);
+      payFields.push(['Viitenumero', inv.reference, { single: true }]);
+      payFields.push(['Eräpäivä', this.dateFi(inv.due), { single: true }]);
+      accounts.forEach((a, i) => {
+        payFields.push([`Tilinumero${a[2] ? ' – ' + a[2] : ''}`, a[0], { single: true }]);
+        payFields.push(['BIC', a[1], { single: true }]);
+        if (i === 0) payFields.push(['Maksettava', this.money(t.gross, cur), { single: true, bold: true, size: 11 }]);
+      });
+      if (!accounts.length) payFields.push(['Maksettava', this.money(t.gross, cur), { single: true, bold: true, size: 11 }]);
+      vcode = opts.barcode === false ? '' : this.virtualBarcode(s.iban, t.gross, inv.reference, inv.due, cur);
+    }
     const payList = pick(payFields);
     const PAY_COLW = W / 3;
-    const vcode = opts.barcode === false ? '' :
-      this.virtualBarcode(s.iban, t.gross, inv.reference, inv.due, cur);
     const BAR_H = 14, MOD = 0.32;          // viivakoodi: korkeus ≥ 13 mm, moduuli 0,32 mm (~106 mm)
     const payGridH = grid(payList, L, 0, 3, PAY_COLW, false);
     const payH = 9 + payGridH + (vcode ? 2 + BAR_H + 5.2 : -2.2);
@@ -251,27 +259,28 @@ const INV = {
       } catch (e) { console.warn('Logoa ei voitu lisätä', e); }
     }
     if (!logoW) line(s.name, L, 20, 110, 16, 'bold', T.strong);
-    line('LASKU', R, 17, 60, 20, 'bold', T.accent, 'right');
+    line(SELF ? 'ITSELASKU' : 'LASKU', R, 17, 70, 20, 'bold', T.accent, 'right');
     line(inv.number, R, 24, 60, 11, 'normal', T.ink, 'right');
     doc.setDrawColor(...T.accent); doc.setLineWidth(0.7); doc.line(L, 30, R, 30); doc.setLineWidth(0.2);
 
     /* ===== osoitteet =====
-     * Vastaanottaja vasemmalla C5-ikkunakirjekuoren ikkunan kohdalla (A4 taitettuna kerran):
-     * pieni ikkuna 35×95 mm (40 mm ylhäältä, 18 mm vasemmalta) ja iso ikkuna 60×90 mm
-     * (15 mm ylhäältä, 18 mm vasemmalta). Osoitealue paperilla x 22–88 mm, y 42–62 mm,
-     * eikä sille tulosteta muuta tekstiä. Laskuttajan tiedot oikealla. */
+     * Vastaanottaja E5-ikkunakuoren (156 × 220 mm) pienen ikkunan 30 × 90 mm kohdalle
+     * (ikkuna 40 mm ylhäältä, 18 mm vasemmalta). A4 taitetaan kerran puoliksi.
+     * Paperi voi liikkua kuoressa noin 10 mm sivuttain ja 7,5 mm pystysuunnassa, joten
+     * ikkuna näkyy aina alueella x 18–98 mm, y 40–62,5 mm. Osoite piirretään alueelle
+     * x 22–92 mm, y 41–61,5 mm, eikä alueelle tulosteta muuta. */
     const foreign = (cn) => has(cn) && !/^(suomi|finland|fi)$/i.test(cn.trim());
     const sLines = [s.name, s.addr, [s.zip, s.city].filter(has).join(' '), foreign(s.country) ? s.country : ''].filter(has);
     const cLines = [c.name, c.recipient, c.addr, [c.zip, c.city].filter(has).join(' '), foreign(c.country) ? c.country : ''].filter(has);
-    const AX = 22, AW = 66, AMAX = 61.5;                // ikkunan osoitealue
-    let asz = 10, aLines, AY = 45;
+    const AX = 22, AW = 70, AMAX = 60.5;
+    let asz = 10, aLines, AY = 44.5;
     const fits = () => AY + (aLines.length - 1) * asz * PT * 1.3 <= AMAX;
     const cut = (str, w) => { let x = str; while (tw(x) > w && x.length > 1) x = x.slice(0, -2) + '…'; return x; };
     // 1) rivitys + fontin pienennys (min 6,5 pt)
     for (;;) {
       aLines = [];
       cLines.forEach((l, i) => wrap(l, AW, asz, i === 0 ? 'bold' : 'normal').forEach(x => aLines.push([x, i === 0])));
-      AY = aLines.length > 5 ? 43.5 : 45;
+      AY = aLines.length > 4 ? 43.6 : 44.5;
       if (fits() || asz <= 6.5) break;
       asz -= 0.25;
     }
@@ -279,7 +288,7 @@ const INV = {
     if (!fits()) {
       for (asz = 10; ; asz -= 0.25) {
         aLines = cLines.map((l, i) => { font(asz, i === 0 ? 'bold' : 'normal'); return [cut(l, AW), i === 0]; });
-        AY = aLines.length > 5 ? 43.5 : 45;
+        AY = aLines.length > 4 ? 43.6 : 44.5;
         if (fits() || asz <= 6.5) break;
       }
     }
@@ -287,13 +296,21 @@ const INV = {
     aLines.forEach(([x, b], k) => { font(asz, b ? 'bold' : 'normal'); doc.text(x, AX, AY + k * alh); });
     const cy = AY + aLines.length * alh;
 
-    line('LASKUTTAJA', 118, 38, 76, LBL, 'bold', T.grey);
+    line(SELF ? 'OSTAJA – LASKUN LAATIJA' : 'LASKUTTAJA', 118, 38, 76, LBL, 'bold', T.grey);
     let sy = 43;
     sLines.forEach(l => wrap(l, R - 118, 10).forEach(x => { font(10, 'normal'); doc.text(x, 118, sy); sy += 4.6; }));
+    if (SELF && has(s.bid)) { line('Y-tunnus ' + s.bid, 118, sy, R - 118, 9, 'normal', T.grey); sy += 4.6; }
 
     /* ===== laskun perustiedot ===== */
     y = Math.max(sy, cy, 66) + 4;
-    const meta = pick([
+    const meta = pick(SELF ? [
+      ['Laskun päivä', this.dateFi(inv.date), { single: true }],
+      ['Maksupäivä', this.dateFi(inv.due), { single: true }],
+      ['Toimituspäivä', this.dateFi(inv.deliveryDate), { single: true }],
+      ['Myyjän Y-tunnus', c.bid, { single: true }],
+      ['Myyjän ALV-numero', c.vatId, { single: true }],
+      ...(inv.extraMeta || []).map(m => [m[0], m[1], { single: true }])
+    ] : [
       ['Laskun päivä', this.dateFi(inv.date), { single: true }],
       ['Eräpäivä', this.dateFi(inv.due), { single: true }],
       ['Maksuehto', has(inv.terms) ? inv.terms + ' pv netto' : '', { single: true }],
@@ -304,7 +321,8 @@ const INV = {
       ['Asiakkaan Y-tunnus', c.bid, { single: true }],
       ['Myyjänro', s.sellerNo, { single: true }],
       ['Verkkolaskuosoite', c.einv, { single: true }],
-      ['Välittäjä', c.operator, { single: true }]
+      ['Välittäjä', c.operator, { single: true }],
+      ...(inv.extraMeta || []).map(m => [m[0], m[1], { single: true }])
     ]);
     const META_COLW = W / 3;
     const metaH = grid(meta, L + 2, 0, 3, META_COLW - 0.7, false);
@@ -316,7 +334,7 @@ const INV = {
     /* ===== laskurivit ===== */
     const X = { desc: L, descW: 84, qty: 113, qtyW: 11, unit: 116, unitW: 12, price: 152, priceW: 21, vat: 166, vatW: 11, tot: R, totW: 25 };
     const header = () => {
-      line('TUOTE', X.desc, y, X.descW, LBL, 'bold', T.strong);
+      line(SELF ? 'SELITE' : 'TUOTE', X.desc, y, X.descW, LBL, 'bold', T.strong);
       line('MÄÄRÄ', X.qty, y, X.qtyW + 1, LBL, 'bold', T.strong, 'right');
       line('YKS.', X.unit, y, X.unitW, LBL, 'bold', T.strong);
       line('HINTA ALV 0 %', X.price, y, X.priceW, LBL, 'bold', T.strong, 'right');
@@ -326,7 +344,7 @@ const INV = {
       y += 6.8;
     };
     const contHeader = () => {
-      line(`${s.name || ''} · Lasku ${inv.number} (jatkuu)`, L, 14, W, 8, 'normal', T.grey);
+      line(`${s.name || ''} · ${SELF ? 'Itselasku' : 'Lasku'} ${inv.number} (jatkuu)`, L, 14, W, 8, 'normal', T.grey);
       y = 24;
     };
     header();
@@ -349,7 +367,11 @@ const INV = {
 
     /* ===== yhteenveto + teksti (viimeiselle sivulle maksuosan yläpuolelle) ===== */
     const rates = Object.keys(t.byRate).sort((a, b) => a - b);
-    const noteLines = has(inv.note) ? wrap(inv.note, W, 10) : [];
+    const noteText = SELF
+      ? 'Itselaskutus. Ostaja on laatinut laskun myyjän puolesta myyjän kanssa sovitun menettelyn mukaisesti.' +
+        (has(inv.note) ? '\n' + inv.note : '')
+      : inv.note;
+    const noteLines = has(noteText) ? wrap(noteText, W, 10) : [];
     const sumH = 1 + (1 + rates.length) * 5.4 + 9 + (noteLines.length ? 4 + noteLines.length * 4.6 : 0);
     if (y + sumH > CONTENT_MAX_LAST) { doc.addPage(); contHeader(); }
     y += 1;
@@ -362,7 +384,7 @@ const INV = {
     rates.forEach(r => sumRow(`ALV ${this.num(r, 1)} % (${this.money(t.byRate[r].net, cur)})`, this.money(t.byRate[r].vat, cur)));
     doc.setDrawColor(...T.accent); doc.setLineWidth(0.5); doc.line(112, y - 2.6, R, y - 2.6); doc.setLineWidth(0.2);
     y += 3;
-    line('MAKSETTAVA', 150, y, 50, 12, 'bold', T.strong, 'right');
+    line(SELF ? 'YHTEENSÄ' : 'MAKSETTAVA', 150, y, 50, 12, 'bold', T.strong, 'right');
     line(this.money(t.gross, cur), R, y, 42, 12, 'bold', T.strong, 'right');
     y += 6;
     if (noteLines.length) {
@@ -374,7 +396,7 @@ const INV = {
     /* ===== maksutiedot + pankkiviivakoodi (viimeinen sivu, alareuna) ===== */
     let py = PAY_TOP;
     doc.setDrawColor(...T.accent); doc.setLineWidth(0.5); doc.line(L, py, R, py); doc.setLineWidth(0.2);
-    line('MAKSUTIEDOT', L, py + 4.5, 60, 8, 'bold', T.strong);
+    line(SELF ? 'MAKSU MYYJÄLLE' : 'MAKSUTIEDOT', L, py + 4.5, 80, 8, 'bold', T.strong);
     py += 9;
     grid(payList, L, py, 3, PAY_COLW, true);
     py += payGridH;
@@ -392,8 +414,8 @@ const INV = {
     }
 
     /* ===== alatunniste kaikille sivuille ===== */
-    const col1 = [s.name, s.addr, [s.zip, s.city].filter(has).join(' ')].filter(has);
     const pre = (label, v) => has(v) ? label + v : '';
+    const col1 = [s.name, s.addr, [s.zip, s.city].filter(has).join(' ')].filter(has);
     const col2 = [pre('Puh. ', s.phone), pre('Puh. ', s.phone2), s.email, s.web].filter(has);
     const col3 = [pre('Y-tunnus ', s.bid), pre('ALV-nro ', s.vatId), pre('Kaupparek. ', s.tradeNo)].filter(has);
     const pages = doc.getNumberOfPages();

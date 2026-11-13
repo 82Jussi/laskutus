@@ -27,7 +27,7 @@ const SEARCH = {
     return (2 * inter) / (na + nb);
   },
 
-  /* entries: [{item, index, code, name, extra}] → [{entry, score, fuzzy}] */
+  /* entries: [{index, code, name, extra}] → [{entry, score, fuzzy}] */
   find(query, entries, limit = 50) {
     const q = this.fold(query).trim();
     if (!q) return entries.slice(0, limit).map(e => ({ entry: e, score: 9, fuzzy: false }));
@@ -54,7 +54,7 @@ const SEARCH = {
     if (q.length < 3) return [];
     const near = entries.map(e => {
       const name = this.fold(e.name);
-      const words = name.split(/[\s\-–/,.()]+/).filter(Boolean);
+      const words = split(name);
       let best = this.similarity(q, name);
       for (let i = 0; i < words.length; i++) {
         for (let n = 1; n <= Math.min(tokens.length + 1, words.length - i); n++) {
@@ -69,8 +69,10 @@ const SEARCH = {
 
   /* Liittää hakulistan tekstikenttään.
    * opts: entries() → lista, render(entry) → {title, sub}, onPick(entry),
+   *       onType(), onNoMatch(), isPicked(),
    *       pickOnBlur: valitse lähin osuma kun kentästä poistutaan,
-   *       showAllOnFocus: näytä koko lista tyhjällä kentällä */
+   *       showAllOnFocus: näytä koko lista kentän saadessa kohdistuksen,
+   *       selectOnFocus: maalaa teksti kohdistuksessa */
   attach(input, opts) {
     if (input._combo) return input._combo;
     const wrap = document.createElement('span');
@@ -95,6 +97,12 @@ const SEARCH = {
       list.hidden = true; active = -1;
       input.setAttribute('aria-expanded', 'false');
     }
+    function highlightItem(i) {
+      active = i;
+      items().forEach((li, k) => li.classList.toggle('active', k === i));
+      const li = items()[i];
+      if (li && li.scrollIntoView) li.scrollIntoView({ block: 'nearest' });
+    }
     function open(showAll, ignoreQuery) {
       const q = ignoreQuery ? '' : input.value;
       if (!q.trim() && !showAll) { close(); return; }
@@ -114,12 +122,6 @@ const SEARCH = {
       list.hidden = false;
       input.setAttribute('aria-expanded', 'true');
       highlightItem(q.trim() ? 0 : -1);
-    }
-    function highlightItem(i) {
-      active = i;
-      items().forEach((li, k) => li.classList.toggle('active', k === i));
-      const li = items()[i];
-      if (li && li.scrollIntoView) li.scrollIntoView({ block: 'nearest' });
     }
     function pick(k) {
       const r = results[k];
@@ -148,7 +150,7 @@ const SEARCH = {
         if (!list.hidden) { e.preventDefault(); close(); }
       }
     });
-    // pointerdown + preventDefault: kenttä ei menetä fokusta ennen valintaa
+    // pointerdown + preventDefault: kenttä ei menetä kohdistusta ennen valintaa
     list.addEventListener('pointerdown', (e) => {
       e.preventDefault();
       const li = e.target.closest('li[data-k]');
@@ -158,7 +160,7 @@ const SEARCH = {
       setTimeout(() => {
         const q = input.value.trim();
         if (picked) { close(); return; }
-        if (opts.pickOnBlur && !picked && q) {
+        if (opts.pickOnBlur && q) {
           const r = self.find(q, opts.entries(), 1)[0];
           close();
           if (r) { picked = true; opts.onPick(r.entry); }

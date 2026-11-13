@@ -15,7 +15,14 @@ const DEFAULT_CFG = {
     'Hei,\n\nOhessa lasku {nro}. Eräpäivä on {erapaiva} ja maksettava summa {summa}.\n' +
     'Käytäthän maksaessasi viitenumeroa {viite}.\n\n' +
     'Virtuaaliviivakoodi: {virtuaaliviivakoodi}\n\nYstävällisin terveisin\n{laskuttaja}',
-  vatRates: '25,5; 13,5; 10; 0',          // laskurivien ALV-valikko
+  vatRates: '25,5; 13,5; 10; 0',           // laskurivien ALV-valikko
+  /* erityisominaisuudet – näkyvät vain, kun ne on otettu käyttöön */
+  featSelf: false,                         // itselaskutus
+  featRoad: false,                         // tiekuntalaskutus
+  selfMailSubject: 'Itselasku {nro} / {laskuttaja}',
+  selfMailBody:
+    'Hei,\n\nOhessa itselasku {nro}: {selite}.\nMaksamme {summa} tilillesi {tilinumero} viimeistään {erapaiva}.\n\n' +
+    'Ystävällisin terveisin\n{laskuttaja}',
   lastBiller: ''
 };
 
@@ -25,11 +32,10 @@ const CFG = {
   load() {
     try {
       const saved = JSON.parse(localStorage.getItem(CFG_KEY) || '{}');
-      // aiempi oletusviesti päivittyy uuteen, jos sitä ei ole muokattu
-      const OLD_BODIES = ['ohessa', 'Ohessa'].map(o => 'Hei,\n\n' + o +
-        ' lasku {nro}. Eräpäivä on {erapaiva} ja maksettava summa {summa}.\n' +
-        'Käytäthän maksaessasi viitenumeroa {viite}.\n\nYstävällisin terveisin\n{laskuttaja}');
-      if (OLD_BODIES.includes(saved.mailBody)) delete saved.mailBody;
+      // aiemmat oletusviestit päivittyvät uuteen, jos niitä ei ole muokattu
+      const base = ' lasku {nro}. Eräpäivä on {erapaiva} ja maksettava summa {summa}.\n' +
+        'Käytäthän maksaessasi viitenumeroa {viite}.\n\nYstävällisin terveisin\n{laskuttaja}';
+      if (['ohessa', 'Ohessa'].map(o => 'Hei,\n\n' + o + base).includes(saved.mailBody)) delete saved.mailBody;
       Object.assign(this.data, DEFAULT_CFG, saved);
     } catch (e) { console.warn('Asetusten luku epäonnistui', e); }
     return this.data;

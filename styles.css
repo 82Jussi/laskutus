@@ -32,9 +32,12 @@ body{margin:0;font-family:Arial,sans-serif;background:var(--bg);color:var(--ink)
 .icon-btn.dark{color:var(--ink)}
 
 /* ---------- välilehdet ---------- */
-.tabs{display:flex;gap:6px;padding:10px 10px 0;max-width:980px;margin:0 auto}
-.tab{flex:1;border:0;background:#e0e0e0;color:#444;padding:9px 6px;border-radius:10px;font-size:15px;cursor:pointer}
+.tabs{display:flex;gap:6px;padding:10px 10px 0;max-width:980px;margin:0 auto;overflow-x:auto;
+  scrollbar-width:none;-webkit-overflow-scrolling:touch}
+.tabs::-webkit-scrollbar{display:none}
+.tab{flex:1 0 auto;border:0;background:#e0e0e0;color:#444;padding:9px 12px;border-radius:10px;font-size:15px;cursor:pointer;white-space:nowrap}
 .tab.active{background:var(--green);color:#fff;font-weight:bold}
+.tab[hidden]{display:none}
 
 main{max-width:980px;margin:0 auto}
 .view{display:none}
@@ -87,6 +90,7 @@ input.invalid{border-color:var(--danger);background:#fff3f3}
 .btn.primary{background:var(--green-d);border-color:var(--green-d)}
 .btn:disabled{opacity:.5;cursor:not-allowed}
 .btn:active{transform:scale(.98)}
+.btn.sm{padding:6px 10px;font-size:13.5px}
 .mini{border:1px solid #c8c8c8;background:var(--green-l);color:var(--green-d);border-radius:8px;
   padding:5px 10px;font-size:14px;font-weight:bold;cursor:pointer}
 .row-btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
@@ -113,6 +117,23 @@ input.invalid{border-color:var(--danger);background:#fff3f3}
 .totals .big{font-size:19px;color:var(--green-d);border-top:1px solid var(--line);margin-top:6px;padding-top:8px}
 .totals .big b{color:var(--green-d)}
 
+/* ---------- erälaskut (itselaskutus, tiekunta) ---------- */
+.bsum{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
+.bcard{border:1px solid var(--line);border-radius:10px;padding:9px 10px;margin-bottom:8px;background:#fafafa}
+.bcard.err{border-color:#e5a3a3;background:#fff6f6}
+.bcard.off{opacity:.55}
+.bcard.done{border-color:#9fd3a2;background:#f2fbf2}
+.bcard-h{display:flex;justify-content:space-between;gap:10px;align-items:baseline}
+.bcard-h b{font-size:15px;overflow-wrap:anywhere}
+.bcard-h .sum{font-weight:bold;white-space:nowrap;color:var(--green-d)}
+.bcard .addr{font-size:12.5px;color:var(--muted);margin-top:2px;overflow-wrap:anywhere}
+.bcard ul{margin:6px 0 0;padding:0;list-style:none;font-size:13.5px}
+.bcard li{display:flex;justify-content:space-between;gap:10px;padding:2px 0;border-top:1px dashed #e3e3e3}
+.bcard li span:last-child{white-space:nowrap}
+.bcard .errs{color:var(--danger);font-size:12.5px;margin-top:5px}
+.bcard .row-btns{margin-top:7px}
+.bcard .nro{font-size:12px;color:var(--muted);font-weight:normal}
+
 /* ---------- tilat ---------- */
 .status{margin:0 14px 16px;font-size:14px;min-height:20px}
 .status.ok{color:var(--green-d)}
@@ -126,6 +147,7 @@ input.invalid{border-color:var(--danger);background:#fff3f3}
 
 .pill{display:inline-block;background:var(--green-l);color:var(--green-d);border-radius:999px;
   padding:4px 10px;margin:0 6px 6px 0;font-size:13px;font-weight:bold}
+.pill.warn{background:#fde2e2;color:var(--danger)}
 .struct p{margin:6px 0}
 details summary{cursor:pointer;color:var(--green-d);margin-top:8px}
 
