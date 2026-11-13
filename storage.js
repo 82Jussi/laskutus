@@ -51,7 +51,6 @@ const ST = {
   mode: (typeof window.showDirectoryPicker === 'function') ? 'folder' : 'file',
   dir: null,
 
-  /* ---------- kansio ---------- */
   async restore() {
     if (this.mode !== 'folder') return null;
     try { this.dir = (await IDB.get('dir')) || null; } catch (_) { this.dir = null; }

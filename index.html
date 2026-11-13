@@ -37,7 +37,6 @@
 
 <main>
 
-<!-- käyttöönotto / uudelleenyhdistys (näkyy kaikilla laskuvälilehdillä) -->
 <div class="card setup" id="setupCard" hidden>
   <div id="setupText"></div>
   <div class="row-btns" id="setupBtns"></div>
@@ -46,7 +45,6 @@
 <!-- ======================= LASKU ======================= -->
 <section id="laskuView" class="view active">
 
-  <!-- valmis lasku -->
   <div class="card done" id="doneCard" hidden>
     <div class="done-title" id="doneTitle"></div>
     <div class="small" id="doneText"></div>
@@ -135,14 +133,14 @@
       <label>Maksupäivä
         <span class="datebox"><input type="text" id="selfDue" class="dfield" placeholder="pp.kk.vvvv" inputmode="decimal" autocomplete="off"><input type="date" class="dpick" data-for="selfDue" tabindex="-1" aria-label="Valitse maksupäivä kalenterista"></span>
       </label>
-      <label>Ensimmäinen laskunumero<input type="text" id="selfFirstNo"></label>
+      <label>Ensimmäinen laskunumero<input type="text" id="selfFirstNo" inputmode="numeric"></label>
     </div>
     <label>Lisäteksti kaikille laskuille
       <textarea id="selfNote" rows="2"></textarea>
     </label>
   </div>
   <div class="card">
-    <div class="card-h">Muodostettavat itselaskutukset <button type="button" class="mini" id="btnSelfReload">Päivitä</button></div>
+    <div class="card-h">Muodostettavat itselaskutukset <button type="button" class="mini" id="btnSelfReload" title="Lukee rekisterin uudelleen">Päivitä</button></div>
     <div id="selfSummary" class="small"></div>
     <div id="selfList"></div>
   </div>
@@ -182,7 +180,7 @@
     </label>
   </div>
   <div class="card">
-    <div class="card-h">Muodostettavat laskut <button type="button" class="mini" id="btnRoadReload">Päivitä</button></div>
+    <div class="card-h">Muodostettavat laskut <button type="button" class="mini" id="btnRoadReload" title="Lukee rekisterin uudelleen">Päivitä</button></div>
     <div id="roadSummary" class="small"></div>
     <div id="roadList"></div>
   </div>

@@ -1,15 +1,15 @@
 /* batch.js – erityisominaisuudet: itselaskutus ja tiekunnan laskutus
  *
- * Molemmat muodostavat erän laskuja rekisterin omalta välilehdeltä:
  *   - Itselaskutus: jokainen rivi on täydellinen (saajan tiedot toistetaan). Saman saajan
  *     (Nimi + Tilinumero) rivit yhdistetään yhdeksi itselaskutukseksi. Laskuttaja (ostaja,
  *     laskun laatija) valitaan ohjelmassa koko erälle.
  *   - Tiekunta: jokaiselle käytössä olevalle osakkaalle oma lasku tieyksiköiden mukaan.
- * Tietokoneella laskut tallennetaan kansioon Laskut/vuosi/Itselaskutus/erä tai
- * Laskut/vuosi/Tiekunnat/tiekunta yhdessä yhteenveto.csv:n kanssa.
+ *
+ * Laskunumerot: "Ensimmäinen laskunumero" -kenttä on aina määräävä. Kun käyttäjä muuttaa
+ * sitä, korttien numerot ja esikatselu päivittyvät heti, ja käsin annettu numero säilyy
+ * Päivitä-painikkeen ja välilehden vaihdon yli, kunnes erä on muodostettu.
  */
 
-/* IBAN-tarkiste (mod 97) */
 function ibanValid(iban) {
   const s = String(iban || '').replace(/\s/g, '').toUpperCase();
   if (!/^[A-Z]{2}\d{2}[A-Z0-9]{8,30}$/.test(s)) return false;
@@ -24,8 +24,10 @@ const fmtIban = (s) => String(s || '').replace(/\s/g, '').toUpperCase().replace(
 const BATCH = {
   done: { self: {}, road: {} },     // muodostetut laskut avaimittain
   plan: { self: [], road: [] },     // muodostettavat laskut
+  manual: { self: '', road: '' },   // käyttäjän antama ensimmäinen numero
 
-  /* ---------- yhteiset ---------- */
+  noField(kind) { return $(kind === 'self' ? 'selfFirstNo' : 'roadFirstNo'); },
+
   biller(kind) {
     return REG.billers[Number($(kind === 'self' ? 'selfBiller' : 'roadBiller').value) || 0] || null;
   },
@@ -40,18 +42,18 @@ const BATCH = {
     });
   },
 
+  /* Ehdottaa ensimmäisen numeron, ellei käyttäjä ole antanut omaa */
   async firstNumber(kind) {
-    const el = $(kind === 'self' ? 'selfFirstNo' : 'roadFirstNo');
-    if (el.dataset.manual === '1' && el.value.trim()) return;
+    const el = this.noField(kind);
+    if (this.manual[kind]) { el.value = this.manual[kind]; return; }
     const b = this.biller(kind);
     el.value = b ? (b.prefix || '') + await nextNumberFor(b) : '';
-    el.dataset.manual = '';
   },
 
-  /* Laskunumerot: ensimmäinen kentästä, seuraavat juoksevasti */
+  /* k:nnen laskun numero – luetaan aina kentästä */
   numberAt(kind, k) {
     const b = this.biller(kind);
-    const v = $(kind === 'self' ? 'selfFirstNo' : 'roadFirstNo').value.trim();
+    const v = this.noField(kind).value.trim();
     const n = numberPart(v, b) || 1;
     return (b && b.prefix ? b.prefix : '') + (n + k);
   },
@@ -62,15 +64,22 @@ const BATCH = {
     el.textContent = msg || '';
   },
 
-  /* "1 itselaskutus" / "3 itselaskutusta", "1 lasku" / "3 laskua" */
   count(kind, n) {
     return kind === 'self' ? `${n} itselaskutus${n === 1 ? '' : 'ta'}` : `${n} lasku${n === 1 ? '' : 'a'}`;
   },
+
+  render(kind) { if (kind === 'self') this.renderSelf(); else this.renderRoad(); },
 
   async refresh() {
     this.fillBillers();
     if (cfg.featSelf) { await this.firstNumber('self'); this.renderSelf(); }
     if (cfg.featRoad) { this.fillRoads(); await this.firstNumber('road'); this.renderRoad(); }
+  },
+
+  numberPill(ok) {
+    if (!ok.length) return '';
+    const a = ok[0].inv.number, b = ok[ok.length - 1].inv.number;
+    return `<span class="pill">nro ${esc(a)}${ok.length > 1 ? '–' + esc(b) : ''}</span>`;
   },
 
   /* ===================================================================== */
@@ -90,7 +99,6 @@ const BATCH = {
     const plan = [];
     groups.forEach(g => {
       const f = g.rows[0], errs = [], warns = [];
-      // saman saajan tietojen pitää olla samat kaikilla riveillä
       for (const [fld, label] of [['addr', 'osoite'], ['zip', 'postinumero'], ['city', 'postitoimipaikka'], ['email', 'sähköposti']]) {
         const vals = [...new Set(g.rows.map(r => r[fld]))];
         if (vals.length > 1) errs.push(`Ristiriita: ${label} eroaa riveillä ${g.rows.map(r => r.row).join(', ')} (${vals.map(v => v || 'tyhjä').join(' / ')})`);
@@ -131,6 +139,7 @@ const BATCH = {
     $('selfSummary').innerHTML = !rows
       ? '<p class="muted">Rekisterin Itselaskutus-välilehti puuttuu tai on tyhjä.</p>'
       : `<div class="bsum"><span class="pill">${this.count('self', ok.length)}</span>` +
+        this.numberPill(ok) +
         `<span class="pill">yhteensä ${INV.money(total)}</span>` +
         (bad ? `<span class="pill warn">${bad} virheellistä – ohitetaan</span>` : '') +
         (skipped ? `<span class="pill">${skipped} riviä ei käytössä</span>` : '') + '</div>';
@@ -228,6 +237,7 @@ const BATCH = {
     const diff = r.road.method === 'budget' ? Math.round((net - r.road.budget) * 100) / 100 : 0;
     $('roadSummary').innerHTML =
       `<div class="bsum"><span class="pill">${this.count('road', ok.length)}</span>` +
+      this.numberPill(ok) +
       `<span class="pill">${INV.num(r.totalUnits, 3)} tieyksikköä</span>` +
       `<span class="pill">${INV.price(r.perUnit)} € / tieyks.</span>` +
       `<span class="pill">yhteensä ${INV.money(total)}</span>` +
@@ -270,7 +280,6 @@ const BATCH = {
     </div>`;
   },
 
-  /* Täydentää laskun yhteiset tiedot (päivät, käyttäjän lisäteksti, laskuttaja, numero, viite) */
   async complete(kind, p, number) {
     const b = this.biller(kind);
     const inv = { ...p.inv, number, sender: { ...(b || {}), logoData: await logoFor(b) } };
@@ -295,6 +304,7 @@ const BATCH = {
     if (!this.biller(kind)) return 'Laskuttajarekisteri puuttuu.';
     if (!getD(ids[1])) return kind === 'self' ? 'Maksupäivä puuttuu.' : 'Eräpäivä puuttuu.';
     if (kind === 'self' && !$('selfBatch').value.trim()) return 'Anna erälle nimi.';
+    if (!numberPart(this.noField(kind).value, this.biller(kind))) return 'Ensimmäinen laskunumero puuttuu tai ei sisällä numeroa.';
     return '';
   },
 
@@ -303,10 +313,13 @@ const BATCH = {
     return outFolderFor(inv) + '/' + sub;
   },
 
+  /* Esikatselu: kortit lasketaan ensin uudelleen, jotta numero on aina kentän mukainen */
   async preview(kind, k) {
     const err = this.checkCommon(kind);
     if (err) { this.setStatus(kind, err, 'err'); return; }
+    this.render(kind);
     const p = this.plan[kind][k];
+    if (!p) return;
     const inv = await this.complete(kind, p, p.inv.number || 'LUONNOS');
     openBlob(INV.buildPdf(inv, pdfOpts()).output('blob'));
   },
@@ -314,7 +327,7 @@ const BATCH = {
   async generateAll(kind) {
     const err = this.checkCommon(kind);
     if (err) { this.setStatus(kind, err, 'err'); return; }
-    if (kind === 'self') this.renderSelf(); else this.renderRoad();
+    this.render(kind);
     const ok = this.plan[kind].filter(p => !p.errs.length);
     const bad = this.plan[kind].length - ok.length;
     if (!ok.length) { this.setStatus(kind, 'Ei muodostettavia laskuja.', 'err'); return; }
@@ -384,11 +397,11 @@ const BATCH = {
     this.afterGenerate(kind);
   },
 
+  /* Erän jälkeen seuraava vapaa numero ehdotetaan taas automaattisesti */
   async afterGenerate(kind) {
-    const el = $(kind === 'self' ? 'selfFirstNo' : 'roadFirstNo');
-    el.dataset.manual = '';
+    this.manual[kind] = '';
     await this.firstNumber(kind);
-    if (kind === 'self') this.renderSelf(); else this.renderRoad();
+    this.render(kind);
     suggestNumber();
   },
 
@@ -414,7 +427,6 @@ const BATCH = {
     return new Blob(['\ufeff' + [head, ...rows, totalRow].map(r => r.map(q).join(';')).join('\r\n')], { type: 'text/csv' });
   },
 
-  /* ---------- tapahtumat ---------- */
   onCard(kind, e) {
     const btn = e.target.closest('button[data-act]');
     if (!btn) return;
@@ -429,6 +441,17 @@ const BATCH = {
       location.href = mailtoHref(done.inv);
       st(`Liitä viestiin tiedosto ${done.name}${done.path ? ` (OneDrive › ${ST.folderName()}/${done.path.split('/').slice(0, -1).join('/')})` : ''}.`, 'ok');
     }
+  },
+
+  /* Päivitä: lukee rekisterin uudelleen, tyhjentää muodostetut ja laskee kortit uudelleen.
+     Käsin annettu ensimmäinen laskunumero säilyy. */
+  async reload(kind) {
+    this.manual[kind] = this.manual[kind] || '';
+    this.done[kind] = {};
+    this.setStatus(kind, 'Päivitetään…', 'work');
+    const reread = await reloadRegistry();          // kutsuu fillRegistry → refresh
+    if (!reread) await this.refresh();
+    this.setStatus(kind, reread ? 'Rekisteri luettu uudelleen.' : 'Päivitetty. (Puhelimessa muuttunut rekisteri valitaan uudelleen Rekisteri-välilehdeltä.)', 'ok');
   },
 
   init() {
@@ -448,25 +471,31 @@ const BATCH = {
     };
     $('roadTerms').oninput = DATE_HOOKS.roadDate;
 
-    ['selfFirstNo', 'roadFirstNo'].forEach(id => $(id).addEventListener('input', () => {
-      $(id).dataset.manual = '1';
-      if (id === 'selfFirstNo') this.renderSelf(); else this.renderRoad();
-    }));
+    /* Ensimmäinen laskunumero: muutos päivittää kortit heti ja jää voimaan */
+    ['self', 'road'].forEach(kind => {
+      const el = this.noField(kind);
+      const onEdit = () => {
+        this.manual[kind] = el.value.trim();
+        this.render(kind);
+      };
+      el.addEventListener('input', onEdit);
+      el.addEventListener('change', onEdit);
+    });
     $('selfBiller').onchange = async () => {
-      $('selfFirstNo').dataset.manual = '';
+      this.manual.self = '';
       const b = this.biller('self');
       if (b && b.terms) setD('selfDue', INV.addDays(getD('selfDate') || INV.today(), b.terms));
       await this.firstNumber('self'); this.renderSelf();
     };
     $('roadBiller').onchange = async () => {
-      $('roadFirstNo').dataset.manual = '';
+      this.manual.road = '';
       const b = this.biller('road');
       if (b && b.terms) { $('roadTerms').value = b.terms; DATE_HOOKS.roadDate(); }
       await this.firstNumber('road'); this.renderRoad();
     };
     $('roadSel').onchange = () => this.renderRoad();
-    $('btnSelfReload').onclick = () => { this.done.self = {}; this.setStatus('self', ''); this.refresh(); };
-    $('btnRoadReload').onclick = () => { this.done.road = {}; this.setStatus('road', ''); this.refresh(); };
+    $('btnSelfReload').onclick = () => this.reload('self');
+    $('btnRoadReload').onclick = () => this.reload('road');
     $('btnSelfAll').onclick = () => this.generateAll('self');
     $('btnRoadAll').onclick = () => this.generateAll('road');
     $('selfList').addEventListener('click', (e) => this.onCard('self', e));

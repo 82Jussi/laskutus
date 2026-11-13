@@ -39,7 +39,6 @@ const SEARCH = {
       const hay = code + ' ' + name + ' ' + this.fold(e.extra);
       if (!tokens.every(t => hay.includes(t))) return;
       const words = split(name);
-      // jokainen hakusana: sanan alku nimessä 0, nimen sisällä 1, koodissa 1, muualla (paikkakunta ym.) 2
       let score = tokens.reduce((sum, t) =>
         sum + (words.some(w => w.startsWith(t)) ? 0 : name.includes(t) || code.startsWith(t) ? 1 : 2), 0);
       if (code && code === q) score -= 20;
@@ -50,7 +49,6 @@ const SEARCH = {
     if (hits.length) {
       return hits.sort((a, b) => a.score - b.score || a.order - b.order).slice(0, limit);
     }
-    // ei osumia: lähimmät (kirjoitusvirheet)
     if (q.length < 3) return [];
     const near = entries.map(e => {
       const name = this.fold(e.name);
@@ -67,12 +65,7 @@ const SEARCH = {
     return near.sort((a, b) => a.score - b.score).slice(0, 6);
   },
 
-  /* Liittää hakulistan tekstikenttään.
-   * opts: entries() → lista, render(entry) → {title, sub}, onPick(entry),
-   *       onType(), onNoMatch(), isPicked(),
-   *       pickOnBlur: valitse lähin osuma kun kentästä poistutaan,
-   *       showAllOnFocus: näytä koko lista kentän saadessa kohdistuksen,
-   *       selectOnFocus: maalaa teksti kohdistuksessa */
+  /* Liittää hakulistan tekstikenttään. */
   attach(input, opts) {
     if (input._combo) return input._combo;
     const wrap = document.createElement('span');
@@ -150,7 +143,6 @@ const SEARCH = {
         if (!list.hidden) { e.preventDefault(); close(); }
       }
     });
-    // pointerdown + preventDefault: kenttä ei menetä kohdistusta ennen valintaa
     list.addEventListener('pointerdown', (e) => {
       e.preventDefault();
       const li = e.target.closest('li[data-k]');

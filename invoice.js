@@ -1,9 +1,9 @@
 /* invoice.js – laskun laskenta, viitenumero, pankkiviivakoodi ja PDF (jsPDF)
  *
  * Asettelu: jokainen teksti piirretään mitatun leveyden mukaan. Pitkät arvot
- * rivitetään tai fonttia pienennetään, ja rivien korkeus lasketaan ennen
- * piirtämistä, joten tekstit eivät mene päällekkäin. Puuttuvat tiedot jätetään
- * kokonaan pois (otsikko ja kenttä).
+ * rivitetään tai fonttia pienennetään, joten tekstit eivät mene päällekkäin.
+ * Puuttuvat tiedot jätetään kokonaan pois (otsikko ja kenttä).
+ * Myyjänro on sisäinen tieto, eikä sitä tulosteta laskulle.
  *
  * Laskutyypit (inv.kind): 'normal' (oletus), 'self' (itselaskutus), 'road' (tiekunta).
  */
@@ -22,7 +22,6 @@ const C128 = [
 
 const INV = {
 
-  /* ---------- muotoilut ---------- */
   money(n, cur) {
     const s = (Number(n) || 0).toLocaleString('fi-FI', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     return s + (cur && cur.toUpperCase() !== 'EUR' ? ' ' + cur.toUpperCase() : ' €');
@@ -33,13 +32,11 @@ const INV = {
   price(n) {
     return (Number(n) || 0).toLocaleString('fi-FI', { minimumFractionDigits: 2, maximumFractionDigits: 4 });
   },
-  /* ISO (vvvv-kk-pp) -> pp.kk.vvvv */
   dateFi(iso) {
     if (!iso) return '';
     const [y, m, d] = iso.split('-');
     return `${d.padStart(2, '0')}.${m.padStart(2, '0')}.${y}`;
   },
-  /* pp.kk.vvvv (myös 1.2.26, 010226, 1,2,2026, 1/2/2026) -> ISO. '' = tyhjä, null = virheellinen */
   parseFi(s) {
     s = String(s || '').trim();
     if (!s) return '';
@@ -71,10 +68,9 @@ const INV = {
   },
   today() { return this.iso(new Date()); },
 
-  /* ---------- suomalainen viitenumero (7-3-1) ---------- */
   reference(base) {
     const digits = String(base).replace(/\D/g, '').replace(/^0+/, '');
-    const body = (digits.length < 3 ? '100' + digits : digits).slice(-19);   // vähintään 3 numeroa
+    const body = (digits.length < 3 ? '100' + digits : digits).slice(-19);
     const w = [7, 3, 1];
     let sum = 0;
     for (let i = 0; i < body.length; i++) sum += Number(body[body.length - 1 - i]) * w[i % 3];
@@ -82,7 +78,6 @@ const INV = {
     return full.replace(/\B(?=(\d{5})+(?!\d))/g, ' ');
   },
 
-  /* ---------- summat ---------- */
   lineTotal(l) {
     return Math.round((Number(l.qty) || 0) * (Number(l.price) || 0) * 100) / 100;
   },
@@ -106,9 +101,7 @@ const INV = {
     return { net, vat, gross: Math.round((net + vat) * 100) / 100, byRate };
   },
 
-  /* ---------- pankkiviivakoodi, versio 4 (Finanssiala, Pankkiviivakoodi-opas 5.3) ----------
-   * 4 + IBAN ilman FI:tä (16) + eurot (6) + sentit (2) + 000 + viite (20) + eräpäivä VVKKPP
-   * Palauttaa 54 numeroa tai '' jos koodia ei voi muodostaa. */
+  /* pankkiviivakoodi, versio 4 */
   virtualBarcode(iban, amount, reference, due, currency) {
     const acc = String(iban || '').replace(/\s/g, '').toUpperCase();
     if (!/^FI\d{16}$/.test(acc)) return '';
@@ -122,7 +115,6 @@ const INV = {
     return code.length === 54 ? code : '';
   },
 
-  /* Code 128 merkistö C: palauttaa moduulileveydet [palkki, väli, palkki, ...] */
   code128C(digits) {
     const vals = [105];
     for (let i = 0; i < digits.length; i += 2) vals.push(Number(digits.substr(i, 2)));
@@ -134,7 +126,6 @@ const INV = {
     return widths;
   },
 
-  /* ---------- värit ---------- */
   theme(style, hex) {
     if (style !== 'color') {
       return { accent: [0, 0, 0], strong: [0, 0, 0], tint: [240, 240, 240], ink: [0, 0, 0], grey: [90, 90, 90], rule: [200, 200, 200] };
@@ -145,24 +136,21 @@ const INV = {
     return { accent: c, strong: mix(0.25, 0), tint: mix(0.9, 255), ink: [33, 33, 33], grey: [100, 100, 100], rule: [215, 215, 215] };
   },
 
-  /* ---------- PDF ---------- */
   buildPdf(inv, opts = {}) {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ unit: 'mm', format: 'a4' });
     const T = this.theme(opts.style, opts.color);
     const L = 16, R = 194, W = R - L;
-    const FOOT_Y = 279;                 // alatunnisteen viiva
+    const FOOT_Y = 279;
     const s = inv.sender, c = inv.customer, cur = s.currency;
     const SELF = inv.kind === 'self';
     const t = this.totals(inv.lines);
-    const PT = 0.3528;                  // 1 pt mm:nä
+    const PT = 0.3528;
 
-    /* --- tekstiapurit --- */
     const font = (size, style = 'normal', color = T.ink) => {
       doc.setFont('helvetica', style); doc.setFontSize(size); doc.setTextColor(...color);
     };
     const tw = (str) => doc.getTextWidth(String(str));
-    /* Yksi rivi, joka mahtuu leveyteen maxW: fonttia pienennetään (min 6 pt), sitten lyhennetään */
     const line = (str, x, y, maxW, size, style = 'normal', color = T.ink, align = 'left') => {
       str = String(str ?? '');
       if (!str) return;
@@ -172,7 +160,6 @@ const INV = {
       while (tw(str) > maxW && str.length > 1) str = str.slice(0, -2) + '…';
       doc.text(str, x, y, align === 'right' ? { align: 'right' } : undefined);
     };
-    /* Rivitetty teksti; palauttaa rivit */
     const wrap = (str, maxW, size, style = 'normal') => {
       font(size, style);
       const out = [];
@@ -187,7 +174,6 @@ const INV = {
       });
     };
     const LBL = 7, VAL = 9.5;
-    /* Kenttäruudukko: [label, value, {bold, size, single}] – palauttaa käytetyn korkeuden */
     const grid = (fields, x0, y0, cols, colW, draw = true) => {
       let y = y0;
       for (let i = 0; i < fields.length; i += cols) {
@@ -216,7 +202,7 @@ const INV = {
     const has = (v) => v !== undefined && v !== null && String(v).trim() !== '';
     const pick = (arr) => arr.filter(f => has(f[1]));
 
-    /* ===== maksuosan sisältö (lasketaan ensin, jotta tiedetään sen korkeus) ===== */
+    /* ===== maksuosa ===== */
     const payFields = [];
     let vcode = '';
     if (SELF) {
@@ -239,12 +225,12 @@ const INV = {
     }
     const payList = pick(payFields);
     const PAY_COLW = W / 3;
-    const BAR_H = 14, MOD = 0.32;          // viivakoodi: korkeus ≥ 13 mm, moduuli 0,32 mm (~106 mm)
+    const BAR_H = 14, MOD = 0.32;
     const payGridH = grid(payList, L, 0, 3, PAY_COLW, false);
     const payH = 9 + payGridH + (vcode ? 2 + BAR_H + 5.2 : -2.2);
     const PAY_TOP = FOOT_Y - 4 - payH;
-    const CONTENT_MAX_LAST = PAY_TOP - 5;  // viimeisen sivun sisältö loppuu tähän
-    const CONTENT_MAX = FOOT_Y - 8;        // muut sivut
+    const CONTENT_MAX_LAST = PAY_TOP - 5;
+    const CONTENT_MAX = FOOT_Y - 8;
 
     let y;
 
@@ -263,10 +249,7 @@ const INV = {
     line(inv.number, R, 24, 60, 11, 'normal', T.ink, 'right');
     doc.setDrawColor(...T.accent); doc.setLineWidth(0.7); doc.line(L, 30, R, 30); doc.setLineWidth(0.2);
 
-    /* ===== osoitteet =====
-     * Vastaanottaja E5-ikkunakuoren (156 × 220 mm) pienen ikkunan 30 × 90 mm kohdalle
-     * (ikkuna 40 mm ylhäältä, 18 mm vasemmalta). A4 taitetaan kerran puoliksi.
-     * Osoite piirretään alueelle x 22–92 mm, y 41–61,5 mm, eikä alueelle tulosteta muuta. */
+    /* ===== osoitteet: E5-kuoren ikkuna 30 × 90 mm (40 mm ylhäältä, 18 mm vasemmalta) ===== */
     const foreign = (cn) => has(cn) && !/^(suomi|finland|fi)$/i.test(cn.trim());
     const sLines = [s.name, s.addr, [s.zip, s.city].filter(has).join(' '), foreign(s.country) ? s.country : ''].filter(has);
     const cLines = [c.name, c.recipient, c.addr, [c.zip, c.city].filter(has).join(' '), foreign(c.country) ? c.country : ''].filter(has);
@@ -274,7 +257,6 @@ const INV = {
     let asz = 10, aLines, AY = 44.5;
     const fits = () => AY + (aLines.length - 1) * asz * PT * 1.3 <= AMAX;
     const cut = (str, w) => { let x = str; while (tw(x) > w && x.length > 1) x = x.slice(0, -2) + '…'; return x; };
-    // 1) rivitys + fontin pienennys (min 6,5 pt)
     for (;;) {
       aLines = [];
       cLines.forEach((l, i) => wrap(l, AW, asz, i === 0 ? 'bold' : 'normal').forEach(x => aLines.push([x, i === 0])));
@@ -282,7 +264,6 @@ const INV = {
       if (fits() || asz <= 6.5) break;
       asz -= 0.25;
     }
-    // 2) ei mahdu: yksi rivi per osoitetieto, pitkät rivit lyhennetään
     if (!fits()) {
       for (asz = 10; ; asz -= 0.25) {
         aLines = cLines.map((l, i) => { font(asz, i === 0 ? 'bold' : 'normal'); return [cut(l, AW), i === 0]; });
@@ -299,7 +280,7 @@ const INV = {
     sLines.forEach(l => wrap(l, R - 118, 10).forEach(x => { font(10, 'normal'); doc.text(x, 118, sy); sy += 4.6; }));
     if (SELF && has(s.bid)) { line('Y-tunnus ' + s.bid, 118, sy, R - 118, 9, 'normal', T.grey); sy += 4.6; }
 
-    /* ===== laskun perustiedot ===== */
+    /* ===== laskun perustiedot (Myyjänro ei näy laskulla) ===== */
     y = Math.max(sy, cy, 66) + 4;
     const meta = pick(SELF ? [
       ['Laskun päivä', this.dateFi(inv.date), { single: true }],
@@ -317,7 +298,6 @@ const INV = {
       ['Toimituspäivä', this.dateFi(inv.deliveryDate), { single: true }],
       ['Asiakasnumero', c.id, { single: true }],
       ['Asiakkaan Y-tunnus', c.bid, { single: true }],
-      ['Myyjänro', s.sellerNo, { single: true }],
       ['Verkkolaskuosoite', c.einv, { single: true }],
       ['Välittäjä', c.operator, { single: true }],
       ...(inv.extraMeta || []).map(m => [m[0], m[1], { single: true }])
@@ -363,7 +343,7 @@ const INV = {
       y += 4.8;
     }
 
-    /* ===== yhteenveto + käyttäjän lisäteksti (viimeiselle sivulle maksuosan yläpuolelle) ===== */
+    /* ===== yhteenveto + käyttäjän lisäteksti ===== */
     const rates = Object.keys(t.byRate).sort((a, b) => a - b);
     const noteLines = has(inv.note) ? wrap(inv.note, W, 10) : [];
     const sumH = 1 + (1 + rates.length) * 5.4 + 9 + (noteLines.length ? 4 + noteLines.length * 4.6 : 0);
@@ -387,7 +367,7 @@ const INV = {
       noteLines.forEach(l => { doc.text(l, L, y); y += 4.6; });
     }
 
-    /* ===== maksutiedot + pankkiviivakoodi (viimeinen sivu, alareuna) ===== */
+    /* ===== maksutiedot + pankkiviivakoodi ===== */
     let py = PAY_TOP;
     doc.setDrawColor(...T.accent); doc.setLineWidth(0.5); doc.line(L, py, R, py); doc.setLineWidth(0.2);
     line(SELF ? 'MAKSU MYYJÄLLE' : 'MAKSUTIEDOT', L, py + 4.5, 80, 8, 'bold', T.strong);
@@ -396,7 +376,6 @@ const INV = {
     py += payGridH;
     if (vcode) {
       py += 2;
-      // viivakoodi: aina musta valkoisella; virtuaaliviivakoodi selkotekstinä viivakoodin alla
       const bars = this.code128C(vcode);
       const bx0 = L + 4;
       let bx = bx0;
@@ -407,7 +386,7 @@ const INV = {
       line(vcode, Math.max(L, cx - vw / 2), py + BAR_H + 3.8, W, 8.5, 'normal', [0, 0, 0]);
     }
 
-    /* ===== alatunniste kaikille sivuille ===== */
+    /* ===== alatunniste ===== */
     const pre = (label, v) => has(v) ? label + v : '';
     const col1 = [s.name, s.addr, [s.zip, s.city].filter(has).join(' ')].filter(has);
     const col2 = [pre('Puh. ', s.phone), pre('Puh. ', s.phone2), s.email, s.web].filter(has);

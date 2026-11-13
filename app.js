@@ -3,16 +3,16 @@
 const $ = (id) => document.getElementById(id);
 const cfg = CFG.data;
 
-const REG_CACHE = 'laskutus.reg.v2';       // puhelimen välimuisti rekisteristä
-const STATE_LOCAL = 'laskutus.state.v1';   // puhelimen laskunumerot
-const LOGO_KEY = 'laskutus.logo.v1';       // asetuksista valittu logo (dataURL)
-const STATE_FILE = 'laskutus-tila.json';   // tietokoneella Laskutus-kansiossa
+const REG_CACHE = 'laskutus.reg.v2';
+const STATE_LOCAL = 'laskutus.state.v1';
+const LOGO_KEY = 'laskutus.logo.v1';
+const STATE_FILE = 'laskutus-tila.json';
 
 let REG = { customers: [], products: [], billers: [], self: [], roads: [], roadMembers: [], source: '', loaded: '' };
 let ROWS = [];
 let STATE = { next: {}, log: [] };
-let LAST = null;           // viimeksi tallennettu lasku {inv, blob, name, path}
-let READY = false;         // kansio + rekisteri käytettävissä
+let LAST = null;
+let READY = false;
 
 /* ===================================================================== */
 /* Apurit                                                                */
@@ -47,7 +47,6 @@ function zipFi(v, country) {
   if (/^\d{1,4}$/.test(s) && (!country || /suomi|finland/i.test(country))) return s.padStart(5, '0');
   return s;
 }
-/* Excelin Kyllä/Ei; tyhjä = oletus */
 function yes(v, dflt = true) {
   const s = norm(v);
   if (!s) return dflt;
@@ -62,12 +61,11 @@ function pdfOpts() {
 }
 
 /* ===================================================================== */
-/* Päivämäärät: kentät muodossa pp.kk.vvvv, sisäisesti ISO               */
+/* Päivämäärät                                                           */
 /* ===================================================================== */
 const DATE_IDS = ['laskupvm', 'erapvm', 'toimituspvm'];
-const DATE_HOOKS = {};     // id -> funktio, jota kutsutaan kun päivä muuttuu
+const DATE_HOOKS = {};
 
-/* ISO tai '' (tyhjä tai virheellinen) */
 function getD(id) {
   const v = INV.parseFi($(id).value);
   return v || '';
@@ -78,7 +76,6 @@ function setD(id, iso) {
   const p = document.querySelector(`.dpick[data-for="${id}"]`);
   if (p) p.value = iso || '';
 }
-/* Tarkistaa ja muotoilee kentän; palauttaa ISO, '' tai null (virhe) */
 function normalizeD(id) {
   const el = $(id);
   const v = INV.parseFi(el.value);
@@ -106,7 +103,7 @@ function initDateFields() {
   document.querySelectorAll('.dpick').forEach(p => {
     p.addEventListener('click', () => {
       p.value = getD(p.dataset.for) || '';
-      try { if (p.showPicker) p.showPicker(); } catch (_) { /* puhelin avaa valitsimen itse */ }
+      try { if (p.showPicker) p.showPicker(); } catch (_) { }
     });
     p.addEventListener('change', () => {
       if (!p.value) return;
@@ -210,8 +207,6 @@ function parseWorkbook(buf, source) {
     vat: pick(r, ['ALV', 'ALV %']) === '' ? null : num(pick(r, ['ALV', 'ALV %']))
   })).filter(p => p.name);
 
-  /* --- erityisominaisuudet --- */
-  // Itselaskutus: jokainen rivi on täydellinen (saajan tiedot toistetaan)
   const self = sheetRows(wb, ['itselaskutus']).map((r, i) => {
     const qtyRaw = pick(r, ['Määrä']);
     const vatRaw = pick(r, ['ALV', 'ALV %']);
@@ -280,6 +275,12 @@ function setRegistry(reg) {
   fillRegistry();
 }
 
+/* Lukee rekisterin uudelleen (tietokone). Puhelimessa rekisteri valitaan uudelleen Rekisteri-välilehdeltä. */
+async function reloadRegistry() {
+  if (ST.mode === 'folder' && READY) { await loadRegistryFromFolder(); return true; }
+  return false;
+}
+
 /* ===================================================================== */
 /* Laskunumerot                                                          */
 /* ===================================================================== */
@@ -306,7 +307,6 @@ function currentBiller() {
 }
 const billerKey = (b) => b ? (b.sellerNo || b.name) : '';
 
-/* Muuttaa tiedostonimimallin säännölliseksi lausekkeeksi, josta saadaan laskunumero */
 function patternRegex(prefix) {
   const p = (cfg.filePattern || 'Lasku_{nro}_{asiakas}.pdf').replace(/\.pdf$/i, '') + '.pdf';
   const parts = p.split(/(\{nro\}|\{asiakas\}|\{pvm\}|\{vuosi\}|\{summa\})/);
@@ -317,17 +317,14 @@ function patternRegex(prefix) {
   }).join('');
   return new RegExp('^' + rx + '$', 'i');
 }
-/* Itselaskutuksen tiedostonimi palautetaan tavallisen laskun muotoon numeron tunnistamista varten */
 function selfFileToNormal(name) {
   if (!/^Itselaskutus/i.test(name)) return null;
   const pat = cfg.filePattern || 'Lasku_{nro}_{asiakas}.pdf';
   return /^Lasku/i.test(pat) ? name.replace(/^Itselaskutus/i, 'Lasku') : name.replace(/^Itselaskutus_/i, '');
 }
 
-/* Tietokoneella: suurin olemassa oleva laskunumero laskukansiosta alikansioineen */
 async function scanMaxNumber(b) {
   if (ST.mode !== 'folder' || !READY) return 0;
-  // jos usealla laskuttajalla on sama etuliite, laskuja ei voi erottaa tiedostonimestä
   if (REG.billers.filter(x => (x.prefix || '') === (b.prefix || '')).length > 1) return 0;
   const rx = patternRegex(b.prefix || '');
   const y = new Date().getFullYear();
@@ -345,7 +342,6 @@ async function scanMaxNumber(b) {
   return max;
 }
 
-/* Seuraava vapaa numero laskuttajalle (numero, ilman etuliitettä) */
 async function nextNumberFor(b) {
   if (!b) return 1;
   const fromState = Number(STATE.next[billerKey(b)]) || 0;
@@ -379,21 +375,18 @@ function billerOptions() {
 }
 
 function fillRegistry() {
-  // laskuttajat
   const bs = $('laskuttaja');
   bs.innerHTML = billerOptions();
   const lastIdx = REG.billers.findIndex(b => billerKey(b) === cfg.lastBiller);
   bs.value = String(lastIdx >= 0 ? lastIdx : 0);
   $('billerWrap').hidden = REG.billers.length <= 1;
 
-  // asiakkaat: valinta säilyy, jos asiakas löytyy päivitetystä rekisteristä
   const prev = $('asiakasHaku').dataset.key || '';
   const idx = prev ? REG.customers.findIndex(c => custKey(c) === prev) : -1;
   if (idx >= 0) selectCustomer(idx, false); else clearCustomer();
   $('asiakasHaku').placeholder = REG.customers.length
     ? `Kirjoita nimi tai asiakasnumero (${REG.customers.length} asiakasta)` : 'Lataa ensin rekisteri';
 
-  // yhteenveto
   const has = REG.customers.length || REG.products.length || REG.billers.length;
   const extra = [];
   if (cfg.featSelf) extra.push(`<span class="pill">${(REG.self || []).length} itselaskutusriviä</span>`);
@@ -429,7 +422,6 @@ function currentCustomer() {
   return v === '' ? null : REG.customers[Number(v)] || null;
 }
 
-/* ---------- asiakashaku ---------- */
 const custKey = (c) => (c.id || '') + '|' + c.name;
 function custEntries() {
   return REG.customers.map((c, i) => ({
@@ -501,7 +493,6 @@ function addRow(data = {}) {
   renderRows();
 }
 
-/* ---------- tuotehaku ---------- */
 function prodEntries() {
   return REG.products.map((p, i) => ({ index: i, code: p.code, name: p.name, extra: p.unit }));
 }
@@ -567,7 +558,6 @@ $('rivit').addEventListener('input', (e) => {
 $('rivit').addEventListener('change', (e) => {
   if (e.target.dataset.f === 'vat') { ROWS[e.target.dataset.i].vat = num(e.target.value); calc(); }
 });
-
 $('rivit').addEventListener('click', (e) => {
   const d = e.target.dataset.del;
   if (d === undefined) return;
@@ -639,8 +629,6 @@ function validate(inv) {
   return '';
 }
 
-/* Tiedostonimi. Itselaskutuksessa mallin alun "Lasku" korvataan sanalla "Itselaskutus"
-   (oletusmallilla Itselaskutus_1001_Nimi.pdf) */
 function fileNameFor(inv) {
   const t = INV.totals(inv.lines);
   const pat = cfg.filePattern || 'Lasku_{nro}_{asiakas}.pdf';
@@ -672,7 +660,6 @@ function mailTexts(inv) {
     return { subject: rep(cfg.selfMailSubject), body: rep(cfg.selfMailBody) };
   }
   const vcode = INV.virtualBarcode(inv.sender.iban, t.gross, inv.reference, inv.due, inv.sender.currency);
-  // jos virtuaaliviivakoodia ei voi muodostaa (esim. ulkomainen tili), sen rivi jätetään pois
   const strip = (s) => vcode ? String(s || '') : String(s || '')
     .split('\n').filter(l => !l.includes('{virtuaaliviivakoodi}')).join('\n').replace(/\n{3,}/g, '\n\n');
   const rep = (s) => strip(s)
@@ -716,7 +703,7 @@ function openBlob(blob) {
     window.open(url, '_blank');
   } else {
     $('previewFrame').src = url;
-    $('previewDialog').showModal();
+    if (!$('previewDialog').open) $('previewDialog').showModal();
   }
   setTimeout(() => URL.revokeObjectURL(url), 120000);
 }
@@ -729,9 +716,6 @@ $('btnPreview').onclick = async () => {
 };
 $('btnClosePreview').onclick = () => { $('previewDialog').close(); $('previewFrame').src = 'about:blank'; };
 
-/* Tallenna lasku:
- *  - tietokone: PDF suoraan OneDriven Laskutus/Laskut/vuosi -kansioon
- *  - puhelin:   jakovalikko (OneDrive / sähköposti); varalla lataus laitteelle */
 $('btnSave').onclick = async () => {
   let r;
   try { r = await makePdf(); } catch (e) { status('PDF:n luonti epäonnistui: ' + e.message, 'err'); return; }
@@ -756,7 +740,6 @@ $('btnSave').onclick = async () => {
     return;
   }
 
-  // puhelin: jako heti (vaatii käyttäjän napautuksen, joten ei odotuksia ennen jakoa)
   LAST = { ...r, path: '' };
   const file = new File([r.blob], r.name, { type: 'application/pdf' });
   const folder = outFolderFor(r.inv);
@@ -779,7 +762,6 @@ $('btnSave').onclick = async () => {
   status('');
 };
 
-/* Kirjaa laskun lokiin ja kasvattaa laskuttajan numerointia. save=false: tallennus myöhemmin (erät) */
 async function recordInvoice(r, b, n, path, save = true) {
   const key = billerKey(b);
   if (n) STATE.next[key] = Math.max(Number(STATE.next[key]) || 0, n + 1);
@@ -814,8 +796,6 @@ function copyText(t) {
   return Promise.resolve();
 }
 
-/* Jaa PDF: sähköpostiohjelma saa laskun liitteenä. Osoitteet kopioidaan leikepöydälle,
-   koska jakovalikko ei välitä vastaanottajia. */
 async function sharePdf(item, statusFn = status) {
   const addr = (item.inv.emails || []).join('; ');
   if (addr) copyText(addr).catch(() => {});
@@ -830,7 +810,6 @@ async function sharePdf(item, statusFn = status) {
 }
 $('btnShare').onclick = () => { if (LAST) sharePdf(LAST); };
 
-/* Avaa sähköposti: vastaanottajat, otsikko ja viesti valmiina; PDF liitetään itse */
 $('btnMail').onclick = () => {
   if (!LAST) return;
   location.href = mailtoHref(LAST.inv);
@@ -1000,7 +979,6 @@ async function refreshArchive() {
     folder += '/' + keep;
   } else ys.hidden = true;
 
-  // laskut + erälaskujen alikansiot (Itselaskutus/…, Tiekunnat/…)
   const files = [];
   const walk = async (f, prefix, depth) => {
     for (const e of await ST.list(f)) {
@@ -1080,7 +1058,6 @@ function readSettings() {
   CFG.save();
 }
 
-/* Erityisominaisuuksien välilehdet näkyvät vain, kun ne on otettu käyttöön */
 function applyFeatures() {
   $('tabSelf').hidden = !cfg.featSelf;
   $('tabRoad').hidden = !cfg.featRoad;
@@ -1178,5 +1155,4 @@ async function startApp() {
     renderLocalArchive();
   }
 }
-/* batch.js ladataan app.js:n jälkeen; käynnistys kun kaikki skriptit on luettu */
 window.addEventListener('DOMContentLoaded', () => startApp());
