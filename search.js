@@ -106,7 +106,7 @@ const SEARCH = {
     input.addEventListener('input', () => { picked = false; if (opts.onType) opts.onType(); open(false); });
     input.addEventListener('focus', () => {
       picked = !!opts.isPicked && opts.isPicked();
-      if (opts.selectOnFocus) setTimeout(() => { try { input.select(); } catch (_) {} }, 0);
+      if (typeof opts.selectOnFocus === 'function' ? opts.selectOnFocus() : opts.selectOnFocus) setTimeout(() => { try { input.select(); } catch (_) {} }, 0);
       if (opts.showAllOnFocus) { open(true, picked); highlightItem(-1); }
     });
     input.addEventListener('keydown', (e) => {

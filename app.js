@@ -625,7 +625,11 @@ function renderRows() {
           return { title: p.name, sub: [p.code, INV.money(p.price) + (p.unit ? ' / ' + p.unit : ''), p.vat === null ? '' : 'ALV ' + fmtVat(p.vat)].filter(Boolean).join(' · ') };
         },
         onPick: (e) => pickProduct(i, e.index),
-        onType: () => { ROWS[i].product = ''; }
+        onType: () => { ROWS[i].product = ''; },
+        /* kenttää napauttamalla koko tuotelista; kirjoitettu haku suodattaa; vapaa teksti säilyy */
+        isPicked: () => ROWS[i].product !== '' || !str(ROWS[i].desc),
+        showAllOnFocus: true,
+        selectOnFocus: () => ROWS[i].product !== ''
       });
     });
   }

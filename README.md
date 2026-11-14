@@ -46,3 +46,7 @@ jossa jokainen laskutettava tila ja alue on omana rivinään. Ohjelma varoittaa,
 
 #### Päivämäärävalitsin
 Kalenteripainike avaa ohjelman oman kalenterin, jossa viikko alkaa maanantaista laitteen kieliasetuksesta riippumatta.
+
+#### Tuotevalinta laskuriveillä
+Tuotekentän napautus avaa koko tuoterekisterin selattavaksi (kuten Asiakas-kenttä). Kirjoitettu hakusana suodattaa listaa,
+ja kirjoitettu teksti jää vapaaksi riviksi, jos listasta ei valita tuotetta.
