@@ -63,10 +63,21 @@
       <label id="billerWrap">Laskuttaja
         <select id="laskuttaja"></select>
       </label>
-      <label>Asiakas
+      <label id="custWrap">Asiakas
         <input type="text" id="asiakasHaku" placeholder="Kirjoita nimi tai asiakasnumero" enterkeyhint="next">
         <input type="hidden" id="asiakas" value="">
       </label>
+    </div>
+    <label class="chk"><input type="checkbox" id="oneOff"> Kertalaskun asiakas – ei rekisterissä</label>
+    <div id="oneOffFields" hidden>
+      <div class="grid2">
+        <label>Nimi<input type="text" id="ooName" autocomplete="off"></label>
+        <label>Laskutusvastaanottaja / c/o <span class="hint">(valinnainen)</span><input type="text" id="ooRecipient" autocomplete="off"></label>
+        <label>Osoite<input type="text" id="ooAddr" autocomplete="off"></label>
+        <label>Postinumero<input type="text" id="ooZip" inputmode="numeric" autocomplete="off"></label>
+        <label>Postitoimipaikka<input type="text" id="ooCity" autocomplete="off"></label>
+        <label>Y-tunnus <span class="hint">(valinnainen)</span><input type="text" id="ooBid" autocomplete="off"></label>
+      </div>
     </div>
     <label>Sähköpostit <span class="hint">(ensimmäinen = vastaanottaja, muut kopioina; erotin ;)</span>
       <input type="text" id="emails" inputmode="email" placeholder="laskut@asiakas.fi; tilaaja@asiakas.fi">

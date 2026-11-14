@@ -24,8 +24,10 @@ function pick(row, names) {
 function num(v) {
   if (v === null || v === undefined || v === '') return 0;
   if (typeof v === 'number') return v;
-  return Number(String(v).replace(/\s|€|%/g, '').replace(',', '.')) || 0;
+  return Number(String(v).replace(/\s|€|%/g, '').replace(/[\u2212\u2013]/g, '-').replace(',', '.')) || 0;
 }
+/* luku kenttään pilkulla: 85.5 -> "85,5" */
+const fmtIn = (v) => (v === '' || v === null || v === undefined) ? '' : String(v).replace('.', ',');
 function splitEmails(v) { return String(v || '').split(/[;,]/).map(s => s.trim()).filter(Boolean); }
 function safeName(s) { return String(s || '').replace(/[\\/:*?"<>|]/g, '-').replace(/\s+/g, ' ').trim(); }
 function zipFi(v, country) {
@@ -401,7 +403,8 @@ function fillRegistry() {
   $('billerWrap').hidden = REG.billers.length <= 1;
   const prev = $('asiakasHaku').dataset.key || '';
   const idx = prev ? REG.customers.findIndex(c => custKey(c) === prev) : -1;
-  if (idx >= 0) selectCustomer(idx, false); else clearCustomer();
+  if (isOneOff()) { /* kertalaskun asiakas säilyy */ }
+  else if (idx >= 0) selectCustomer(idx, false); else clearCustomer();
   $('asiakasHaku').placeholder = REG.customers.length
     ? `Kirjoita nimi tai asiakasnumero (${REG.customers.length} asiakasta)` : 'Lataa ensin rekisteri';
   const has = REG.customers.length || REG.products.length || REG.billers.length;
@@ -422,6 +425,8 @@ function fillRegistry() {
       (REG.billers.length ? '' : '<div class="status err">Laskuttajarekisteri puuttuu tai on tyhjä.</div>')
     : 'Rekisteriä ei ole ladattu.';
   $('headState').textContent = has ? `Rekisteri luettu ${REG.loaded}` : 'Rekisteriä ei ole ladattu';
+  // tyhjät rivit saavat laskuttajan oletus-ALV:n (ensimmäinen rivi luodaan ennen rekisterin latausta)
+  ROWS.forEach(r => { if (r.product === '' && !str(r.desc) && !Number(r.price)) r.vat = defaultVat(); });
   renderRows();
   applyBiller();
   if (typeof BATCH !== 'undefined') BATCH.refresh();
@@ -436,7 +441,33 @@ async function applyBiller() {
   await suggestNumber();
   calc();
 }
-function currentCustomer() { const v = $('asiakas').value; return v === '' ? null : REG.customers[Number(v)] || null; }
+/* Kertalaskun asiakas: ei rekisterissä eikä asiakasnumeroa → Asiakasnumero-kenttä jää laskulta pois */
+const isOneOff = () => $('oneOff').checked;
+function oneOffCustomer() {
+  const v = (id) => $(id).value.trim();
+  const name = v('ooName');
+  if (!name) return null;
+  return { id: '', name, recipient: v('ooRecipient'), addr: v('ooAddr'), zip: zipFi(v('ooZip')), city: v('ooCity'),
+    country: '', bid: v('ooBid'), email: '', terms: 0, mails: [], einv: '', operator: '' };
+}
+function currentCustomer() {
+  if (isOneOff()) return oneOffCustomer();
+  const v = $('asiakas').value; return v === '' ? null : REG.customers[Number(v)] || null;
+}
+function setOneOff(on) {
+  $('oneOff').checked = on;
+  $('custWrap').hidden = on;
+  $('oneOffFields').hidden = !on;
+  if (on) {
+    $('asiakas').value = ''; $('asiakasHaku').value = ''; $('asiakasHaku').dataset.key = '';
+    $('asiakasTiedot').textContent = 'Kertalaskun asiakas – ei tallenneta rekisteriin.';
+    $('ooName').focus();
+  } else {
+    ['ooName', 'ooRecipient', 'ooAddr', 'ooZip', 'ooCity', 'ooBid'].forEach(id => { $(id).value = ''; });
+    onCustomerChange();
+  }
+}
+$('oneOff').addEventListener('change', () => setOneOff($('oneOff').checked));
 const custKey = (c) => (c.id || '') + '|' + c.name;
 function custEntries() {
   return REG.customers.map((c, i) => ({ index: i, code: c.id, name: c.name, extra: [c.city, c.bid, c.recipient, c.addr].filter(Boolean).join(' ') }));
@@ -466,6 +497,7 @@ SEARCH.attach($('asiakasHaku'), {
   emptyText: 'Ei osumia asiakasrekisterissä'
 });
 function onCustomerChange() {
+  if (isOneOff()) return;
   const c = currentCustomer(), b = currentBiller();
   if (!c) { $('asiakasTiedot').textContent = ''; $('emails').value = ''; return; }
   $('emails').value = (c.mails.length ? c.mails : splitEmails(c.email)).join('; ');
@@ -502,9 +534,9 @@ function renderRows() {
         <button type="button" class="del" data-del="${i}" aria-label="Poista rivi" title="Poista rivi">×</button>
       </div>
       <div class="lrow-nums">
-        <label>Määrä<input type="number" step="any" inputmode="decimal" data-f="qty" data-i="${i}" value="${r.qty}"></label>
+        <label>Määrä<input type="text" inputmode="decimal" autocomplete="off" data-f="qty" data-i="${i}" value="${fmtIn(r.qty)}"></label>
         <label>Yks.<input data-f="unit" data-i="${i}" value="${esc(r.unit)}"></label>
-        <label>Hinta, alv 0%<input type="number" step="any" inputmode="decimal" data-f="price" data-i="${i}" value="${r.price}"></label>
+        <label>Hinta, alv 0%<span class="pricebox"><input type="text" inputmode="decimal" autocomplete="off" data-f="price" data-i="${i}" value="${fmtIn(r.price)}"><button type="button" class="sign" data-sign="${i}" title="Vaihda etumerkki (hyvitys)" aria-label="Vaihda etumerkki">±</button></span></label>
         <label>ALV<select data-f="vat" data-i="${i}">${vatOptions(r.vat)}</select></label>
         <div class="ltot" data-tot="${i}">${INV.money(INV.lineTotal(r))}</div>
       </div>
@@ -535,6 +567,17 @@ $('rivit').addEventListener('input', (e) => {
 });
 $('rivit').addEventListener('change', (e) => { if (e.target.dataset.f === 'vat') { ROWS[e.target.dataset.i].vat = num(e.target.value); calc(); } });
 $('rivit').addEventListener('click', (e) => {
+  const sg = e.target.dataset.sign;
+  if (sg !== undefined) {
+    const r = ROWS[sg];
+    r.price = -(Number(r.price) || 0);
+    const inp = $('rivit').querySelector(`[data-f="price"][data-i="${sg}"]`);
+    if (inp) inp.value = fmtIn(r.price);
+    const tot = $('rivit').querySelector(`[data-tot="${sg}"]`);
+    if (tot) tot.textContent = INV.money(INV.lineTotal(r));
+    calc();
+    return;
+  }
   const d = e.target.dataset.del;
   if (d === undefined) return;
   ROWS.splice(Number(d), 1);
@@ -573,7 +616,7 @@ function buildInvoice(logoData = '') {
 function validate(inv) {
   for (const id of DATE_IDS) if (normalizeD(id) === null) return 'Tarkista päivämäärä (muoto pp.kk.vvvv).';
   if (!REG.billers.length) return 'Lataa ensin rekisteri (Laskuttajarekisteri puuttuu).';
-  if (!inv.customer.name) return 'Valitse asiakas – kirjoita nimi ja valitse listasta.';
+  if (!inv.customer.name) return isOneOff() ? 'Kirjoita kertalaskun asiakkaan nimi.' : 'Valitse asiakas – kirjoita nimi ja valitse listasta.';
   if (!inv.lines.length) return 'Lisää vähintään yksi laskurivi.';
   if (!inv.number) return 'Laskunumero puuttuu.';
   if (!inv.due) return 'Eräpäivä puuttuu.';
@@ -721,6 +764,7 @@ $('btnOpenPdf').onclick = () => { if (LAST) openBlob(LAST.blob); };
 $('btnNew').onclick = async () => {
   LAST = null;
   $('doneCard').hidden = true;
+  if (isOneOff()) setOneOff(false);
   clearCustomer();
   setD('toimituspvm', '');
   setD('laskupvm', INV.today());

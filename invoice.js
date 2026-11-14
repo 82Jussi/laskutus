@@ -13,12 +13,14 @@ const C128 = [
     '114311','411113','411311','113141','114131','311141','411131','211412','211214','211232','2331112'
 ];
 const INV = {
+  /* fi-FI-muotoilu käyttää miinusmerkkinä U+2212 (−), jota PDF-fontti ei tunne → tavallinen '-' */
+  fix(s) { return String(s).replace(/\u2212/g, '-'); },
   money(n, cur) {
-    const s = (Number(n) || 0).toLocaleString('fi-FI', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const s = this.fix((Number(n) || 0).toLocaleString('fi-FI', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
     return s + (cur && cur.toUpperCase() !== 'EUR' ? ' ' + cur.toUpperCase() : ' €');
   },
-  num(n, d = 2) { return (Number(n) || 0).toLocaleString('fi-FI', { minimumFractionDigits: 0, maximumFractionDigits: d }); },
-  price(n) { return (Number(n) || 0).toLocaleString('fi-FI', { minimumFractionDigits: 2, maximumFractionDigits: 4 }); },
+  num(n, d = 2) { return this.fix((Number(n) || 0).toLocaleString('fi-FI', { minimumFractionDigits: 0, maximumFractionDigits: d })); },
+  price(n) { return this.fix((Number(n) || 0).toLocaleString('fi-FI', { minimumFractionDigits: 2, maximumFractionDigits: 4 })); },
   dateFi(iso) {
     if (!iso) return '';
     const [y, m, d] = iso.split('-');

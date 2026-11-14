@@ -37,3 +37,9 @@ Yksi ojitusyhteisö per rekisteri. Rekisterin **Ojitusyhteisö**-välilehti:
 
 Laskutus: tilan osuus = alueen summa × Osuus % / 100 (senteiksi pyöristettynä). Jokainen maksaja saa yhden laskun,
 jossa jokainen laskutettava tila ja alue on omana rivinään. Ohjelma varoittaa, jos alueen osuudet eivät ole yhteensä 100 %.
+
+### Laskurivit ja kertalasku
+- Määrä ja hinta kirjoitetaan pilkulla (esim. 85,84). Negatiivinen summa (hyvitys) kirjoitetaan miinusmerkillä
+  tai rivin ±-painikkeella, jota voi käyttää myös puhelimen numeronäppäimistöllä.
+- **Kertalaskun asiakas – ei rekisterissä**: asiakkaan tiedot kirjoitetaan suoraan laskulle eikä niitä tallenneta
+  rekisteriin. Laskulle ei tule asiakasnumeroa.

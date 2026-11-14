@@ -2,6 +2,7 @@
 :root{--green:#2e7d32;--green-d:#1b5e20;--green-l:#e8f5e9;--green-m:#cdf3cd;--lime:#9cc93a;--blue:#2f5fd6;--bg:#f3f3f3;
   --card:#fff;--ink:#212121;--muted:#6b6b6b;--line:#dddddd;--yellow:#fff4b0;--red:#ffcaca;--danger:#c62828}
 *{box-sizing:border-box}
+[hidden]{display:none!important}
 html{overflow-x:hidden}
 body{margin:0;font-family:Arial,sans-serif;background:var(--bg);color:var(--ink);overflow-x:clip;padding-bottom:env(safe-area-inset-bottom)}
 .topbar{position:sticky;top:0;z-index:20;background:var(--green);color:#fff;display:flex;justify-content:space-between;align-items:center;gap:10px;
@@ -70,6 +71,10 @@ input.invalid{border-color:var(--danger);background:#fff3f3}
 .lrow-nums input,.lrow-nums select{padding:7px}
 .lrow-nums select{padding:7px 2px 7px 5px}
 .ltot{text-align:right;font-weight:bold;font-size:15px;padding-bottom:8px}
+.pricebox{display:flex;gap:4px;align-items:center}
+.pricebox input{flex:1;min-width:0}
+.sign{flex:none;margin-top:3px;width:30px;height:34px;border:1px solid #c8c8c8;border-radius:8px;background:#fff;color:var(--green-d);font-size:17px;font-weight:bold;cursor:pointer;padding:0}
+#oneOffFields{border:1px dashed #c8c8c8;border-radius:10px;padding:4px 10px 8px;margin-top:6px;background:#fafafa}
 .del{background:none;border:0;color:var(--danger);font-size:22px;cursor:pointer;padding:2px 6px;line-height:1}
 .totals{margin-top:10px;border-top:2px solid var(--line);padding-top:8px}
 .totals div{display:flex;justify-content:space-between;padding:3px 0;font-size:15px;color:var(--muted)}
