@@ -43,3 +43,6 @@ jossa jokainen laskutettava tila ja alue on omana rivinään. Ohjelma varoittaa,
   tai rivin ±-painikkeella, jota voi käyttää myös puhelimen numeronäppäimistöllä.
 - **Kertalaskun asiakas – ei rekisterissä**: asiakkaan tiedot kirjoitetaan suoraan laskulle eikä niitä tallenneta
   rekisteriin. Laskulle ei tule asiakasnumeroa.
+
+#### Päivämäärävalitsin
+Kalenteripainike avaa ohjelman oman kalenterin, jossa viikko alkaa maanantaista laitteen kieliasetuksesta riippumatta.

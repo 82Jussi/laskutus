@@ -90,15 +90,15 @@
     <div class="grid3">
       <label>Laskunumero<input type="text" id="laskunro"></label>
       <label>Laskun päivä
-        <span class="datebox"><input type="text" id="laskupvm" class="dfield" placeholder="pp.kk.vvvv" inputmode="decimal" autocomplete="off"><input type="date" class="dpick" data-for="laskupvm" tabindex="-1" aria-label="Valitse laskun päivä kalenterista"></span>
+        <span class="datebox"><input type="text" id="laskupvm" class="dfield" placeholder="pp.kk.vvvv" inputmode="decimal" autocomplete="off"><button type="button" class="dpick" data-for="laskupvm" aria-label="Valitse laskun päivä kalenterista"></button></span>
       </label>
       <label>Maksuehto (pv)<input type="number" id="maksuehto" min="0" inputmode="numeric"></label>
       <label>Eräpäivä
-        <span class="datebox"><input type="text" id="erapvm" class="dfield" placeholder="pp.kk.vvvv" inputmode="decimal" autocomplete="off"><input type="date" class="dpick" data-for="erapvm" tabindex="-1" aria-label="Valitse eräpäivä kalenterista"></span>
+        <span class="datebox"><input type="text" id="erapvm" class="dfield" placeholder="pp.kk.vvvv" inputmode="decimal" autocomplete="off"><button type="button" class="dpick" data-for="erapvm" aria-label="Valitse eräpäivä kalenterista"></button></span>
       </label>
       <label>Viitenumero<input type="text" id="viite" readonly></label>
       <label>Toimituspäivä
-        <span class="datebox"><input type="text" id="toimituspvm" class="dfield" placeholder="pp.kk.vvvv" inputmode="decimal" autocomplete="off"><input type="date" class="dpick" data-for="toimituspvm" tabindex="-1" aria-label="Valitse toimituspäivä kalenterista"></span>
+        <span class="datebox"><input type="text" id="toimituspvm" class="dfield" placeholder="pp.kk.vvvv" inputmode="decimal" autocomplete="off"><button type="button" class="dpick" data-for="toimituspvm" aria-label="Valitse toimituspäivä kalenterista"></button></span>
       </label>
     </div>
     <div class="muted small" id="numberHint"></div>
@@ -139,10 +139,10 @@
     </div>
     <div class="grid3">
       <label>Laskun päivä
-        <span class="datebox"><input type="text" id="selfDate" class="dfield" placeholder="pp.kk.vvvv" inputmode="decimal" autocomplete="off"><input type="date" class="dpick" data-for="selfDate" tabindex="-1" aria-label="Valitse päivä kalenterista"></span>
+        <span class="datebox"><input type="text" id="selfDate" class="dfield" placeholder="pp.kk.vvvv" inputmode="decimal" autocomplete="off"><button type="button" class="dpick" data-for="selfDate" aria-label="Valitse päivä kalenterista"></button></span>
       </label>
       <label>Maksupäivä
-        <span class="datebox"><input type="text" id="selfDue" class="dfield" placeholder="pp.kk.vvvv" inputmode="decimal" autocomplete="off"><input type="date" class="dpick" data-for="selfDue" tabindex="-1" aria-label="Valitse maksupäivä kalenterista"></span>
+        <span class="datebox"><input type="text" id="selfDue" class="dfield" placeholder="pp.kk.vvvv" inputmode="decimal" autocomplete="off"><button type="button" class="dpick" data-for="selfDue" aria-label="Valitse maksupäivä kalenterista"></button></span>
       </label>
       <label>Ensimmäinen laskunumero<input type="text" id="selfFirstNo" inputmode="numeric"></label>
     </div>
@@ -174,11 +174,11 @@
     </div>
     <div class="grid3">
       <label>Laskun päivä
-        <span class="datebox"><input type="text" id="roadDate" class="dfield" placeholder="pp.kk.vvvv" inputmode="decimal" autocomplete="off"><input type="date" class="dpick" data-for="roadDate" tabindex="-1" aria-label="Valitse päivä kalenterista"></span>
+        <span class="datebox"><input type="text" id="roadDate" class="dfield" placeholder="pp.kk.vvvv" inputmode="decimal" autocomplete="off"><button type="button" class="dpick" data-for="roadDate" aria-label="Valitse päivä kalenterista"></button></span>
       </label>
       <label>Maksuehto (pv)<input type="number" id="roadTerms" min="0" inputmode="numeric"></label>
       <label>Eräpäivä
-        <span class="datebox"><input type="text" id="roadDue" class="dfield" placeholder="pp.kk.vvvv" inputmode="decimal" autocomplete="off"><input type="date" class="dpick" data-for="roadDue" tabindex="-1" aria-label="Valitse eräpäivä kalenterista"></span>
+        <span class="datebox"><input type="text" id="roadDue" class="dfield" placeholder="pp.kk.vvvv" inputmode="decimal" autocomplete="off"><button type="button" class="dpick" data-for="roadDue" aria-label="Valitse eräpäivä kalenterista"></button></span>
       </label>
     </div>
     <label>Lisäteksti kaikille laskuille <span class="hint">(oletus rekisterin kohdasta Laskun lisäteksti)</span>
@@ -209,11 +209,11 @@
     </div>
     <div class="grid3">
       <label>Laskun päivä
-        <span class="datebox"><input type="text" id="drainDate" class="dfield" placeholder="pp.kk.vvvv" inputmode="decimal" autocomplete="off"><input type="date" class="dpick" data-for="drainDate" tabindex="-1" aria-label="Valitse päivä kalenterista"></span>
+        <span class="datebox"><input type="text" id="drainDate" class="dfield" placeholder="pp.kk.vvvv" inputmode="decimal" autocomplete="off"><button type="button" class="dpick" data-for="drainDate" aria-label="Valitse päivä kalenterista"></button></span>
       </label>
       <label>Maksuehto (pv)<input type="number" id="drainTerms" min="0" inputmode="numeric"></label>
       <label>Eräpäivä
-        <span class="datebox"><input type="text" id="drainDue" class="dfield" placeholder="pp.kk.vvvv" inputmode="decimal" autocomplete="off"><input type="date" class="dpick" data-for="drainDue" tabindex="-1" aria-label="Valitse eräpäivä kalenterista"></span>
+        <span class="datebox"><input type="text" id="drainDue" class="dfield" placeholder="pp.kk.vvvv" inputmode="decimal" autocomplete="off"><button type="button" class="dpick" data-for="drainDue" aria-label="Valitse eräpäivä kalenterista"></button></span>
       </label>
     </div>
     <div class="set-title">Laskutettava summa kuivatusalueittain <span class="hint">(oletus rekisteristä · tyhjä tai 0 = aluetta ei laskuteta)</span></div>

@@ -69,6 +69,81 @@ function onDateChanged(id) {
   }
   if (DATE_HOOKS[id]) DATE_HOOKS[id]();
 }
+/* Oma kalenteri: viikko alkaa aina maanantaista (selaimen oma kalenteri seuraa
+   laitteen kieliasetusta, eikä sen ensimmäistä viikonpäivää voi valita). */
+const CAL = {
+  el: null, id: '', y: 0, m: 0,
+  MONTHS: ['tammikuu', 'helmikuu', 'maaliskuu', 'huhtikuu', 'toukokuu', 'kesäkuu', 'heinäkuu', 'elokuu', 'syyskuu', 'lokakuu', 'marraskuu', 'joulukuu'],
+  open(id, anchor) {
+    if (this.el && this.id === id) { this.close(); return; }
+    this.close();
+    this.id = id;
+    const cur = getD(id) || INV.today();
+    this.y = Number(cur.slice(0, 4)); this.m = Number(cur.slice(5, 7)) - 1;
+    const el = document.createElement('div');
+    el.className = 'cal';
+    el.setAttribute('role', 'dialog');
+    el.addEventListener('click', (e) => this.onClick(e));
+    document.body.appendChild(el);
+    this.el = el;
+    this.render();
+    const r = anchor.closest('.datebox').getBoundingClientRect();
+    const w = el.offsetWidth, h = el.offsetHeight;
+    let left = r.right - w + window.scrollX;
+    left = Math.max(window.scrollX + 6, Math.min(left, window.scrollX + document.documentElement.clientWidth - w - 6));
+    let top = r.bottom + 4 + window.scrollY;
+    if (r.bottom + h + 8 > window.innerHeight && r.top - h - 4 > 0) top = r.top - h - 4 + window.scrollY;
+    el.style.left = left + 'px'; el.style.top = top + 'px';
+    setTimeout(() => {
+      this._out = (e) => { if (this.el && !this.el.contains(e.target) && !e.target.closest('.dpick')) this.close(); };
+      this._key = (e) => { if (e.key === 'Escape') this.close(); };
+      document.addEventListener('pointerdown', this._out);
+      document.addEventListener('keydown', this._key);
+    }, 0);
+  },
+  close() {
+    if (!this.el) return;
+    this.el.remove(); this.el = null; this.id = '';
+    document.removeEventListener('pointerdown', this._out);
+    document.removeEventListener('keydown', this._key);
+  },
+  render() {
+    const sel = getD(this.id), today = INV.today();
+    const first = new Date(this.y, this.m, 1);
+    const offset = (first.getDay() + 6) % 7;          // ma = 0 … su = 6
+    const start = new Date(this.y, this.m, 1 - offset);
+    let cells = '';
+    for (let i = 0; i < 42; i++) {
+      const d = new Date(start); d.setDate(start.getDate() + i);
+      const iso = INV.iso(d);
+      const cls = [d.getMonth() !== this.m ? 'out' : '', iso === today ? 'today' : '', iso === sel ? 'sel' : ''].filter(Boolean).join(' ');
+      cells += `<button type="button" data-d="${iso}"${cls ? ` class="${cls}"` : ''}>${d.getDate()}</button>`;
+    }
+    const wd = ['ma', 'ti', 'ke', 'to', 'pe', 'la', 'su'].map((x, i) => `<span class="wd${i === 6 ? ' we' : ''}">${x}</span>`).join('');
+    this.el.innerHTML = `<div class="cal-h"><button type="button" data-nav="-1" aria-label="Edellinen kuukausi">‹</button>
+      <b>${this.MONTHS[this.m].replace(/^./, c => c.toUpperCase())} ${this.y}</b><button type="button" data-nav="1" aria-label="Seuraava kuukausi">›</button></div>
+      <div class="cal-g">${wd}${cells}</div>
+      <div class="cal-f"><button type="button" data-d="${today}">Tänään</button><button type="button" data-close="1">Sulje</button></div>`;
+  },
+  onClick(e) {
+    const b = e.target.closest('button');
+    if (!b) return;
+    if (b.dataset.nav) {
+      this.m += Number(b.dataset.nav);
+      if (this.m < 0) { this.m = 11; this.y--; } else if (this.m > 11) { this.m = 0; this.y++; }
+      this.render(); return;
+    }
+    if (b.dataset.close) { this.close(); return; }
+    if (b.dataset.d) {
+      const id = this.id;
+      setD(id, b.dataset.d);
+      this.close();
+      status('');
+      onDateChanged(id);
+    }
+  }
+};
+
 function initDateFields() {
   document.querySelectorAll('.dfield').forEach(el => {
     const id = el.id;
@@ -78,10 +153,9 @@ function initDateFields() {
     });
     el.addEventListener('input', () => el.classList.remove('invalid'));
   });
-  document.querySelectorAll('.dpick').forEach(p => {
-    p.addEventListener('click', () => { p.value = getD(p.dataset.for) || ''; try { if (p.showPicker) p.showPicker(); } catch (_) { } });
-    p.addEventListener('change', () => { if (!p.value) return; setD(p.dataset.for, p.value); onDateChanged(p.dataset.for); });
-  });
+    document.querySelectorAll('.dpick').forEach(p => {
+      p.addEventListener('click', (e) => { e.preventDefault(); CAL.open(p.dataset.for, p); });
+    });
 }
 
 /* ===== Rekisterin luku ===== */
