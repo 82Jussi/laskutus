@@ -1,7 +1,7 @@
 # Laskutus – rekisteröinnitön OneDrive-malli
 
 Selainohjelma laskujen tekemiseen. Ei Microsoft-kirjautumista, Azurea eikä Client ID:tä.
-Tiedostot: index.html, styles.css, config.js, storage.js, search.js, invoice.js, app.js, batch.js, letter.js,
+Tiedostot: index.html, styles.css, config.js, storage.js, search.js, invoice.js, app.js, batch.js, letter.js, template.js,
 manifest.json ja kuvakkeet. Rekisteri-Excel kuuluu OneDriven Laskutus-kansioon, ei GitHubiin.
 
 ## Tiekunnan laskutus (Asetukset → Erityisominaisuudet → Tiekunnan laskutus)
@@ -69,3 +69,13 @@ Ohjelma lukee välilehdet ja sarakkeet niiden nimen perusteella (järjestys voi 
 välilyönnit eivät haittaa). Välilehtien nimet: Asiakasrekisteri, Tuoterekisteri, Laskuttajarekisteri, Itselaskutus,
 Tiekunta, Ojitusyhteisö, Kirjeen vastaanottajat. Harmaat kaavasarakkeet ovat vain tarkistusta varten; ohjelma laskee
 samat arvot itse. Vanhoja sarakenimiä ei tunnisteta.
+
+
+### Pilvipalvelu ja uusi rekisteri
+
+Ohjelma toimii minkä tahansa synkronoidun pilvikansion kanssa (OneDrive, Google Drive, Dropbox, iCloud Drive):
+tietokoneella valitaan pilvipalvelun sovelluksen synkronoima kansio, puhelimella palvelu näkyy tiedostovalitsimessa,
+kun sen sovellus on asennettu. Rekisterin on oltava .xlsx-tiedosto (ei Google Sheets -taulukko).
+
+Rekisteri-välilehden **Lataa tyhjä rekisteripohja** tekee tyhjän rekisterin kaikkine välilehtineen ja sarakeotsikkoineen
+(template.js). Tietokoneella pohja tallentuu valittuun kansioon, puhelimella se ladataan laitteelle.

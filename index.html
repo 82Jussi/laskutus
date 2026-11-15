@@ -248,7 +248,7 @@
     <label>Otsikko <span class="hint">(valinnainen; myös tiedoston ja kansion nimi)</span><input type="text" id="letTitle" autocomplete="off"></label>
     <label>Tervehdys <span class="hint">(lihavoitu)</span><input type="text" id="letGreeting" autocomplete="off"></label>
     <label>Viesti <span class="hint">**lihavoitu** · rivin loppuun ___ = täyttöviiva · tyhjä rivi = kappaleväli</span>
-      <textarea id="letBody" rows="12" placeholder="Ojitusyhteisömme kuivatushanke on saatu päätökseen…&#10;&#10;**Tilinumero (IBAN):** ___&#10;**Saajan nimi:** ___"></textarea>
+      <textarea id="letBody" rows="12" placeholder="Tiekunta päivittää osakasluettelonsa, jotta kokouskutsut, tiedotteet ja laskut tavoittavat kaikki osakkaat. Pyydämme tarkistamaan yhteystietonne ja ilmoittamaan ne viimeistään 31.12.2026.&#10;&#10;**Kiinteistö:** ___&#10;**Omistaja / maksaja:** ___&#10;**Lähiosoite:** ___&#10;**Postinumero ja -toimipaikka:** ___&#10;**Sähköposti:** ___&#10;**Puhelinnumero:** ___"></textarea>
     </label>
     <div class="grid2">
       <label>Allekirjoittaja<input type="text" id="letSigner" autocomplete="off" placeholder="Etunimi Sukunimi"></label>
@@ -276,9 +276,9 @@
 <!-- ======================= REKISTERI ======================= -->
 <section id="rekisteriView" class="view">
   <div class="card">
-    <div class="card-h">Rekisteri OneDrivessa</div>
+    <div class="card-h">Rekisteri pilvikansiossa</div>
     <div id="folderMode" hidden>
-      <p class="small">Valitse tietokoneen OneDrive-kansiosta <b>Laskutus</b>-kansio. Ohjelma lukee rekisterin ja tallentaa laskut suoraan sinne, ja OneDrive synkronoi ne puhelimeen.</p>
+      <p class="small">Valitse tietokoneen synkronoidusta pilvikansiosta (OneDrive, Google Drive, Dropbox, iCloud Drive) <b>Laskutus</b>-kansio. Ohjelma lukee rekisterin ja tallentaa laskut suoraan sinne, ja pilvipalvelu synkronoi ne puhelimeen.</p>
       <div class="kv"><span>Kansio</span><b id="folderName">–</b></div>
       <label>Rekisteritiedosto
         <select id="regFile"><option value="">– valitse kansio ensin –</option></select>
@@ -289,7 +289,7 @@
       </div>
     </div>
     <div id="fileMode" hidden>
-      <p class="small">Valitse rekisteri-Excel. Valitsimessa OneDrive näkyy sijaintina (Android: valikko ☰ → OneDrive, iPhone: Tiedostot → OneDrive). Rekisteri muistetaan tällä laitteella, kunnes päivität sen.</p>
+      <p class="small">Valitse rekisteri-Excel. Valitsimessa pilvipalvelu näkyy sijaintina (Android: valikko ☰ → OneDrive / Drive, iPhone: Tiedostot → OneDrive / Google Drive). Rekisteri muistetaan tällä laitteella, kunnes päivität sen.</p>
       <div class="kv"><span>Tiedosto</span><b id="fileName">–</b></div>
       <div class="row-btns">
         <label class="btn file-btn">Valitse rekisteri-Excel<input type="file" id="regInput" accept=".xlsx,.xlsm,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden></label>
@@ -326,7 +326,7 @@
 
 </main>
 
-<footer>Tiedot pysyvät omassa OneDrivessasi ja tällä laitteella · ohjelma ei lähetä tietoja muualle</footer>
+<footer>Tiedot pysyvät omassa pilvikansiossasi ja tällä laitteella · ohjelma ei lähetä tietoja muualle</footer>
 
 <!-- ======================= ASETUKSET ======================= -->
 <dialog id="settingsDialog">
@@ -396,7 +396,9 @@
     <p><b>Tietokone (Edge tai Chrome):</b> Rekisteri-välilehti → <i>Valitse kansio</i> → valitse OneDriven <b>Laskutus</b>-kansio. Ohjelma muistaa kansion; selain voi kysyä luvan uudelleen (<i>Salli kansion käyttö</i>). Kansiossa voi olla useita rekistereitä (esim. oma tiekunnalle ja ojitusyhteisölle) – valitse käytettävä listasta.</p>
     <p><b>Puhelin:</b> Rekisteri-välilehti → <i>Valitse rekisteri-Excel</i> (iPhone: Tiedostot → OneDrive). Puhelin muistaa rekisterin; kun muutat Exceliä, valitse se uudelleen. PDF:t tallennetaan jakovalikon kautta (OneDrive tai sähköposti).</p>
     <p><b>Päivitä / Lataa rekisteri uudelleen</b> lukee Excelin muutokset. Sulje Excel tai odota OneDriven synkronointi, jos luku ei onnistu.</p>
-    <p><b>Kotinäytölle:</b> selaimen jakovalikko → <i>Lisää Koti-valikkoon</i>, jolloin ohjelma aukeaa omana sovelluksenaan.</p>
+    <p><b>Pilvipalvelu:</b> OneDriven sijaan voi käyttää Google Drivea, Dropboxia tai iCloud Drivea. Tietokoneella pilvipalvelun oma sovellus pitää olla asennettuna niin, että kansio näkyy Resurssienhallinnassa; puhelimella palvelun sovellus pitää olla asennettuna, jotta se näkyy tiedostovalitsimessa. Rekisterin pitää olla Excel-tiedosto (.xlsx), ei Google Sheets -taulukko.</p>
+      <p><b>Uusi rekisteri:</b> Rekisteri-välilehti → <i>Lataa tyhjä rekisteripohja</i>.</p>
+      <p><b>Kotinäytölle:</b> selaimen jakovalikko → <i>Lisää Koti-valikkoon</i>, jolloin ohjelma aukeaa omana sovelluksenaan.</p>
   </details>
   <details><summary>Lasku</summary>
     <p>Valitse <b>laskuttaja</b> ja <b>asiakas</b> (kirjoita nimi tai asiakasnumero, tai napauta kenttää ja selaa). Laskutussähköposti täyttyy rekisteristä; ensimmäinen osoite on vastaanottaja, muut kopioita.</p>
@@ -458,5 +460,6 @@
 <script src="app.js"></script>
 <script src="batch.js"></script>
 <script src="letter.js"></script>
+<script src="template.js"></script>
 </body>
 </html>

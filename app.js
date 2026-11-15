@@ -426,7 +426,7 @@ function parseWorkbook(buf, source) {
   const drain = parseDrain(wb);
   const billers = parseBillers(wb);
   if (!customers.length && !products.length && !billers.length) {
-    throw new Error('Tiedostosta ei löytynyt Asiakas-, Tuote- tai Laskuttajarekisteriä.');
+    throw new Error('Rekisteri on tyhjä. Täytä vähintään Laskuttajarekisterin Saaja-rivi (tai asiakas/tuote) ja valitse rekisteri uudelleen.');
   }
   return { customers, products, billers, self, road, drain, letters, source, loaded: nowFi() };
 }
