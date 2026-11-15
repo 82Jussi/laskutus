@@ -32,6 +32,7 @@
   <button type="button" class="tab" data-view="selfView" id="tabSelf" hidden>Itselaskutus</button>
   <button type="button" class="tab" data-view="roadView" id="tabRoad" hidden>Tiekunta</button>
   <button type="button" class="tab" data-view="drainView" id="tabDrain" hidden>Ojitusyhteisö</button>
+  <button type="button" class="tab" data-view="letterView" id="tabLetter" hidden>Massakirje</button>
   <button type="button" class="tab" data-view="rekisteriView">Rekisteri</button>
   <button type="button" class="tab" data-view="arkistoView">Arkisto</button>
 </nav>
@@ -233,6 +234,45 @@
   <div id="drainStatus" class="status" aria-live="polite"></div>
 </section>
 
+<!-- ======================= MASSAKIRJE ======================= -->
+<section id="letterView" class="view">
+  <div class="card">
+    <div class="card-h">Massakirje <button type="button" class="mini" id="btnLetReset" title="Palauta kirjepohja oletuksiin">Tyhjennä</button></div>
+    <p class="small muted">Vastaanottajat luetaan rekisterin välilehdeltä <b>Kirjeen vastaanottajat</b>, lähettäjän tiedot Laskuttajarekisteristä. Osoite osuu E5-ikkunakuoren (30 × 90 mm) ikkunaan kuten laskuissa. Luonnos tallentuu tälle laitteelle automaattisesti.</p>
+    <div class="grid2">
+      <label>Lähettäjä<select id="letBiller"></select></label>
+      <label>Päiväys
+        <span class="datebox"><input type="text" id="letDate" class="dfield" placeholder="pp.kk.vvvv" inputmode="decimal" autocomplete="off"><button type="button" class="dpick" data-for="letDate" aria-label="Valitse päiväys kalenterista"></button></span>
+      </label>
+    </div>
+    <label>Otsikko <span class="hint">(valinnainen; myös tiedoston ja kansion nimi)</span><input type="text" id="letTitle" autocomplete="off"></label>
+    <label>Tervehdys <span class="hint">(lihavoitu)</span><input type="text" id="letGreeting" autocomplete="off"></label>
+    <label>Viesti <span class="hint">**lihavoitu** · rivin loppuun ___ = täyttöviiva · tyhjä rivi = kappaleväli</span>
+      <textarea id="letBody" rows="12" placeholder="Ojitusyhteisömme kuivatushanke on saatu päätökseen…&#10;&#10;**Tilinumero (IBAN):** ___&#10;**Saajan nimi:** ___"></textarea>
+    </label>
+    <div class="grid2">
+      <label>Allekirjoittaja<input type="text" id="letSigner" autocomplete="off" placeholder="Etunimi Sukunimi"></label>
+      <label>Asema<input type="text" id="letRole" autocomplete="off" placeholder="Puheenjohtaja"></label>
+    </div>
+    <label>Lopputervehdys ja allekirjoitus <span class="hint">{lahettaja} {allekirjoittaja} {asema} {puhelin} {sahkoposti} {osoite} – tyhjät rivit jätetään pois</span>
+      <textarea id="letClosing" rows="6"></textarea>
+    </label>
+    <p class="small muted">Muuttujat kaikissa kentissä: {nimi} = vastaanottajan nimi, {lisatieto} = vastaanottajan Lisätieto-sarake, {pvm} = päiväys.</p>
+    <label class="chk"><input type="checkbox" id="letDuplex"> Kaksipuolinen tulostus – jokainen kirje alkaa uudelta arkilta</label>
+  </div>
+  <div class="card">
+    <div class="card-h">Vastaanottajat <button type="button" class="mini" id="btnLetReload" title="Lukee rekisterin uudelleen">Päivitä</button></div>
+    <div id="letSummary" class="small"></div>
+    <div id="letList"></div>
+  </div>
+  <div class="card actions">
+    <button type="button" class="btn ghost" id="btnLetPreview">Esikatsele</button>
+    <button type="button" class="btn ghost" id="btnLetOpenAll" hidden>Avaa tulostettava PDF</button>
+    <button type="button" class="btn primary" id="btnLetAll">Muodosta kirjeet</button>
+  </div>
+  <div id="letStatus" class="status" aria-live="polite"></div>
+</section>
+
 <!-- ======================= REKISTERI ======================= -->
 <section id="rekisteriView" class="view">
   <div class="card">
@@ -267,7 +307,8 @@
         <p><b>Laskuttajarekisteri</b>: kentät riveillä (sarake A), jokainen laskuttaja omassa sarakkeessaan (B, C, …)</p>
         <p><b>Itselaskutus</b> (erityisominaisuus): Käytössä, Nimi, Osoite, Postinumero, Postitoimipaikka, Sähköposti, Tilinumero, Selite, Määrä, Yksikkö, Hinta, alv 0%, ALV</p>
         <p><b>Tiekunta</b> (erityisominaisuus, yksi tiekunta per rekisteri): ylhäällä tiekunnan tiedot ja maksuperusteet, alla tieyksikköluettelo – Käytössä, Kiinteistö, Maksaja, Osoite, Postinumero, Postitoimipaikka, Sähköposti, Tienkäyttöyksikkö, Liikennelaji, Yksiköiden lkm, Painoluku, Matka (km), Matkan korjauskerroin, Painoluvun korjauskerroin, Lisätieto</p>
-        <p><b>Ojitusyhteisö</b> (erityisominaisuus, yksi ojitusyhteisö per rekisteri): ylhäällä yhteisön tiedot ja kuivatusalueiden laskutettavat summat, alla osakasluettelo – Käytössä, Kuivatusalue, Kiinteistötunnus, Tilan nimi, Maksaja, Laskutusvastaanottaja, Osoite, Postinumero, Postitoimipaikka, Sähköposti, Muunnettu hyötyala (mha), Osuus %, Lisätieto</p>
+        <p><b>Ojitusyhteisö</b> (erityisominaisuus, yksi ojitusyhteisö per rekisteri): ylhäällä yhteisön tiedot ja kuivatusalueiden laskutettavat summat, alla osittelulaskelma (rivi per kuvio) – Käytössä, Kuivatusalue, Kiinteistötunnus, Tilan nimi, Maksaja, Laskutusvastaanottaja, Osoite, Postinumero, Postitoimipaikka, Sähköposti, Osittelukuvion numero, Osittelukuvion tiluslaji, Osittelukuvion pinta-ala (ha), Maanpinta, Vesipinta, Etäisyys (m), Maanarvojyvä, Kuivatusjyvä, Hyöty vastaa haittaa, mha-korjaus, Kiinteä osuus %, Osuuden korjaus %, Vahvistettu osuus %, Lisätieto. Laskutus vahvistetun osuuden mukaan.</p>
+        <p><b>Kirjeen vastaanottajat</b> (erityisominaisuus Massakirje): Käytössä, Nimi, Laskutusvastaanottaja / c/o, Osoite, Postinumero, Postitoimipaikka, Maa, Sähköposti, Lisätieto</p>
       </div>
     </details>
   </div>
@@ -310,6 +351,8 @@
   <p class="small muted">Lisää Tiekunta-välilehden. Tiekunnan tiedot ja tieyksikköluettelo luetaan rekisterin Tiekunta-välilehdeltä. Yksi rekisteri = yksi tiekunta.</p>
   <label class="chk"><input type="checkbox" id="cfgFeatDrain"> Ojitusyhteisön laskutus</label>
   <p class="small muted">Lisää Ojitusyhteisö-välilehden. Kuivatusalueet, summat ja osakkaiden osuudet luetaan rekisterin Ojitusyhteisö-välilehdeltä. Yksi rekisteri = yksi ojitusyhteisö.</p>
+  <label class="chk"><input type="checkbox" id="cfgFeatLetter"> Massakirje</label>
+  <p class="small muted">Lisää Massakirje-välilehden. Sama kirje tulostetaan jokaiselle rekisterin välilehden <i>Kirjeen vastaanottajat</i> vastaanottajalle. Lähettäjän tiedot tulevat Laskuttajarekisteristä.</p>
   <div id="selfMailSettings">
     <label>Itselaskutuksen sähköpostin otsikko <span class="hint">{nro} {laskuttaja}</span>
       <input type="text" id="cfgSelfMailSubject">
@@ -347,14 +390,52 @@
   </div>
 
   <div class="set-title">Ohje</div>
-  <details class="small">
-    <summary>Miten ohjelma toimii</summary>
-    <p><b>Tietokone:</b> valitse kerran OneDriven Laskutus-kansio. Laskut tallentuvat kansioon automaattisesti ja laskunumero pidetään tiedostossa laskutus-tila.json.</p>
-    <p><b>Puhelin:</b> valitse rekisteri-Excel OneDrivesta. Tallenna lasku avaa jakovalikon: valitse OneDrive ja kansio Laskutus/Laskut/vuosi. Jaa PDF → sähköpostiohjelma liittää laskun suoraan viestiin.</p>
-    <p><b>Päivämäärät:</b> kirjoita muodossa pp.kk.vvvv (esim. 5.12.2026, 5.12.26 tai 051226) tai valitse kalenterista.</p>
-    <p><b>Viivakoodi:</b> tulostuu, kun ensimmäinen tilinumero on suomalainen (FI) IBAN, valuutta on euro ja summa on alle miljoona euroa.</p>
-    <p><b>Tiekunta:</b> useammalle tiekunnalle tehdään oma rekisteritiedosto kullekin ja valitaan rekisteri Rekisteri-välilehdeltä.</p>
+  <div class="help small">
+  <details><summary>Aloitus ja tiedostot</summary>
+    <p>Ohjelma ei kirjaudu mihinkään eikä lähetä tietoja muualle. Kaikki tiedot ovat omassa OneDrivessasi: <b>rekisteri-Excel</b> (asiakkaat, tuotteet, laskuttajat ja erityisominaisuuksien välilehdet) ja muodostetut <b>PDF:t</b>.</p>
+    <p><b>Tietokone (Edge tai Chrome):</b> Rekisteri-välilehti → <i>Valitse kansio</i> → valitse OneDriven <b>Laskutus</b>-kansio. Ohjelma muistaa kansion; selain voi kysyä luvan uudelleen (<i>Salli kansion käyttö</i>). Kansiossa voi olla useita rekistereitä (esim. oma tiekunnalle ja ojitusyhteisölle) – valitse käytettävä listasta.</p>
+    <p><b>Puhelin:</b> Rekisteri-välilehti → <i>Valitse rekisteri-Excel</i> (iPhone: Tiedostot → OneDrive). Puhelin muistaa rekisterin; kun muutat Exceliä, valitse se uudelleen. PDF:t tallennetaan jakovalikon kautta (OneDrive tai sähköposti).</p>
+    <p><b>Päivitä / Lataa rekisteri uudelleen</b> lukee Excelin muutokset. Sulje Excel tai odota OneDriven synkronointi, jos luku ei onnistu.</p>
+    <p><b>Kotinäytölle:</b> selaimen jakovalikko → <i>Lisää Koti-valikkoon</i>, jolloin ohjelma aukeaa omana sovelluksenaan.</p>
   </details>
+  <details><summary>Lasku</summary>
+    <p>Valitse <b>laskuttaja</b> ja <b>asiakas</b> (kirjoita nimi tai asiakasnumero, tai napauta kenttää ja selaa). Laskutussähköposti täyttyy rekisteristä; ensimmäinen osoite on vastaanottaja, muut kopioita.</p>
+    <p><b>Kertalaskun asiakas</b>: asiakkaan tiedot kirjoitetaan suoraan laskulle eikä niitä tallenneta rekisteriin; laskulle ei tule asiakasnumeroa.</p>
+    <p><b>Laskurivit:</b> napauta tuotekenttää ja valitse tuote, kirjoita hakusana tai vapaa teksti. Määrät ja hinnat pilkulla (85,50). Hyvitys miinusmerkillä tai ±-painikkeella. ALV valitaan listasta (kannat asetuksissa).</p>
+    <p><b>Laskunumero</b> ehdotetaan automaattisesti (Laskuttajarekisterin seuraava numero, kansion laskut ja tila-tiedosto). Viitenumero muodostetaan laskunumerosta.</p>
+    <p><b>Tallenna lasku</b>: tietokoneella PDF tallentuu kansioon Laskut/vuosi; puhelimella avautuu jakovalikko. Sen jälkeen <i>Jaa PDF</i> (sähköposti liitteineen, vastaanottajat leikepöydällä) tai <i>Avaa sähköposti</i> (viesti valmiina, PDF liitetään itse).</p>
+    <p>Laskulla puuttuvat tiedot jätetään pois, osoite osuu E5-ikkunakuoreen (A4 kerran taitettuna) ja pankkiviivakoodi tulostuu, kun tili on FI-IBAN ja summa alle miljoona euroa.</p>
+  </details>
+  <details><summary>Päivämäärät</summary>
+    <p>Kirjoita pp.kk.vvvv – myös 5.12.26 tai 051226 käy – tai valitse kalenterista (viikko alkaa maanantaista). Eräpäivän muuttaminen päivittää maksuehdon ja päinvastoin.</p>
+  </details>
+  <details><summary>Itselaskutus</summary>
+    <p>Rekisterin välilehti <b>Itselaskutus</b>: yksi rivi per laskurivi, saajan tiedot toistetaan jokaisella rivillä. Saman saajan (nimi + tilinumero) rivit tulevat yhdelle itselaskutukselle. <i>Käytössä = Ei</i> jättää rivin pois.</p>
+    <p>Valitse ostaja (laskun laatija), päivät ja tarkista ensimmäinen laskunumero. Kortit näyttävät summat, virheet (punainen – ohitetaan) ja varoitukset. <i>Muodosta kaikki</i> tekee PDF:t ja yhteenveto.csv:n kansioon Laskut/vuosi/Itselaskutus/erä. Itselaskutuksesta on sovittava myyjän kanssa.</p>
+  </details>
+  <details><summary>Tiekunta</summary>
+    <p>Yksi tiekunta per rekisteri. <b>Tiekunta</b>-välilehden yläosassa ositeltava summa tai yksikköhinta, perusmaksu, tekstit ja lisäteksti; alla tieyksikköluettelo (rivi per tienkäyttöyksikkö). Tieyksiköt = lkm × painoluku × matka × korjauskertoimet.</p>
+    <p>Jokainen maksaja saa yhden laskun: perusmaksu kerran ja ylläpitomaksu kiinteistöittäin. Laskuttajaksi valitaan automaattisesti laskuttaja, jonka nimi on sama kuin tiekunnan. Laskut tallentuvat kansioon Laskut/vuosi/Tiekunnat/tiekunta.</p>
+  </details>
+  <details><summary>Ojitusyhteisö</summary>
+    <p>Yksi ojitusyhteisö per rekisteri. <b>Ojitusyhteisö</b>-välilehdellä kuivatusalueiden laskutettavat summat ja osittelulaskelma (rivi per kuvio). Ohjelma laskee kuvioista hyötyalat ja osuudet, mutta <b>laskuttaa aina vahvistetun osuuden</b> mukaan ja varoittaa, jos laskettu poikkeaa.</p>
+    <p>Anna summa vain laskutettaville alueille (tyhjä tai 0 = ei laskuteta). Jokainen maksaja saa yhden laskun kaikista tiloistaan ja alueistaan.</p>
+  </details>
+  <details><summary>Massakirje</summary>
+    <p>Rekisterin välilehti <b>Kirjeen vastaanottajat</b>: Käytössä, Nimi, Laskutusvastaanottaja / c/o, Osoite, Postinumero, Postitoimipaikka, Maa, Sähköposti, Lisätieto. Lähettäjä valitaan Laskuttajarekisteristä.</p>
+    <p>Kirjoita otsikko, tervehdys, viesti ja allekirjoitus. Viestissä <b>**lihavointi**</b>, rivin loppuun <b>___</b> tekee täyttöviivan (esim. <i>**Tilinumero (IBAN):** ___</i>), tyhjä rivi on kappaleväli. Muuttujat: {nimi}, {lisatieto}, {pvm}, {lahettaja}, {allekirjoittaja}, {asema}, {puhelin}, {sahkoposti}, {osoite}.</p>
+    <p><i>Muodosta kirjeet</i> tekee yhden tulostettavan PDF:n (kaikki kirjeet peräkkäin) sekä erilliset PDF:t sähköpostia varten kansioon Laskut/vuosi/Kirjeet/otsikko. Valitse <i>Kaksipuolinen tulostus</i>, jos tulostat arkin molemmille puolille.</p>
+  </details>
+  <details><summary>Arkisto</summary>
+    <p>Tietokoneella Arkisto näyttää valitun vuoden PDF:t alikansioineen; napauta avataksesi. Puhelimella näkyy luettelo tällä laitteella tehdyistä laskuista – itse PDF:t ovat OneDrivessa.</p>
+  </details>
+  <details><summary>Asetukset ja vinkit</summary>
+    <p><b>Laskun ulkoasu:</b> mustavalkoinen tai korostusväri, pankkiviivakoodi päälle/pois. <b>Logo</b> valitaan tälle laitteelle tai Laskuttajarekisterin kohdasta <i>Logo tiedostonimi</i>.</p>
+    <p><b>Tallennus:</b> alikansion nimi, vuosikansiot ja tiedostonimen malli ({nro} {asiakas} {pvm} {vuosi}). <b>Sähköposti:</b> otsikko- ja viestipohjat muuttujineen.</p>
+    <p>Asetukset tallentuvat laitekohtaisesti selaimeen – tee tarvittavat asetukset sekä tietokoneelle että puhelimelle.</p>
+    <p><b>Laskunumerot puhelimella:</b> puhelin ei näe tietokoneella tehtyjä numeroita; tarkista ensimmäinen numero, jos laskutat molemmilla.</p>
+  </details>
+  </div>
 
   <div class="dlg-btns">
     <button type="button" class="btn ghost" id="btnResetCfg">Palauta oletukset</button>
@@ -376,5 +457,6 @@
 <script src="invoice.js"></script>
 <script src="app.js"></script>
 <script src="batch.js"></script>
+<script src="letter.js"></script>
 </body>
 </html>

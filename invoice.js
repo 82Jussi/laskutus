@@ -1,6 +1,6 @@
 /* invoice.js – laskun laskenta, viitenumero, pankkiviivakoodi ja PDF (jsPDF)
  * Myyjänro on sisäinen tieto, eikä sitä tulosteta laskulle.
- * Laskutyypit (inv.kind): 'normal' (oletus), 'self' (itselaskutus), 'road' (tiekunta). */
+ * Laskutyypit (inv.kind): 'normal' (oletus), 'self' (itselaskutus), 'road' (tiekunta), 'drain' (ojitusyhteisö). */
 const C128 = [
     '212222','222122','222221','121223','121322','131222','122213','122312','132212','221213','221312','231212',
     '112232','122132','122231','113222','123122','123221','223211','221132','221231','213212','223112','312131',
@@ -52,15 +52,6 @@ const INV = {
   iso(d) { const p = (x) => String(x).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`; },
   today() { return this.iso(new Date()); },
   fmtRef(r) { return String(r || '').replace(/\s/g, '').replace(/\B(?=(\d{5})+(?!\d))/g, ' '); },
-  /* tarkistaa valmiin viitenumeron (7-3-1) */
-  refValid(r) {
-    const s = String(r || '').replace(/\s/g, '');
-    if (!/^\d{2,20}$/.test(s)) return false;
-    const body = s.slice(0, -1), w = [7, 3, 1];
-    let sum = 0;
-    for (let i = 0; i < body.length; i++) sum += Number(body[body.length - 1 - i]) * w[i % 3];
-    return (10 - (sum % 10)) % 10 === Number(s.slice(-1));
-  },
   reference(base) {
     const digits = String(base).replace(/\D/g, '').replace(/^0+/, '');
     const body = (digits.length < 3 ? '100' + digits : digits).slice(-19);
@@ -244,14 +235,14 @@ const INV = {
     /* perustiedot */
     y = Math.max(sy, cy, 66) + 4;
     const meta = pick(SELF ? [
-      ['Laskun päivä', this.dateFi(inv.date), { single: true }],
+      ['Laskun päiväys', this.dateFi(inv.date), { single: true }],
       ['Maksupäivä', this.dateFi(inv.due), { single: true }],
       ['Toimituspäivä', this.dateFi(inv.deliveryDate), { single: true }],
       ['Myyjän Y-tunnus', c.bid, { single: true }],
       ['Myyjän ALV-numero', c.vatId, { single: true }],
       ...(inv.extraMeta || []).map(m => [m[0], m[1], { single: true }])
     ] : [
-      ['Laskun päivä', this.dateFi(inv.date), { single: true }],
+      ['Laskun päiväys', this.dateFi(inv.date), { single: true }],
       ['Eräpäivä', this.dateFi(inv.due), { single: true }],
       ['Maksuehto', has(inv.terms) ? inv.terms + ' pv netto' : '', { single: true }],
       ['Viitenumero', inv.reference, { single: true }],

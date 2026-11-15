@@ -259,8 +259,8 @@ const BATCH = {
     // osuuksien tarkistus alueittain (käytössä olevat rivit)
     const areaInfo = dr.areas.map(a => {
       const rows = dr.rows.filter(r => r.active && r.area === a.name);
-      const pct = Math.round(rows.reduce((s, r) => s + r.pct, 0) * 1000) / 1000;
-      const billed = rows.reduce((s, r) => s + Math.round(amt[a.name] * r.pct) / 100, 0);
+      const pct = Math.round(rows.reduce((s, r) => s + (r.pct || 0), 0) * 1000) / 1000;
+      const billed = rows.reduce((s, r) => s + Math.round(amt[a.name] * (r.pct || 0)) / 100, 0);
       return { name: a.name, amount: amt[a.name], pct, billed: Math.round(billed * 100) / 100, rows: rows.length };
     });
     const groups = new Map();
@@ -279,14 +279,22 @@ const BATCH = {
       g.rows.forEach(r => {
         if (!dr.areas.some(a => a.name === r.area)) errs.push(`Kuivatusalue "${r.area}" puuttuu alueiden summataulukosta (rivi ${r.row})`);
         const a = amt[r.area] || 0;
-        if (!a || !r.pct) return;
+        if (!a) return;
+        r.conflicts.forEach(c => errs.push(`${r.estateName || r.estate}: ${c}`));
+        if (r.pct === null) {
+          if (r.calcPct) errs.push(`${r.estateName || r.estate} (${r.area}): vahvistettu osuus puuttuu (laskettu ${INV.num(r.calcPct, 2)} %)`);
+          return;
+        }
+        if (Math.abs(r.calcPct - r.pct) > 0.005)
+          warns.push(`${r.estateName || r.estate} (${r.area}): kuvioista laskettu osuus ${INV.num(r.calcPct, 2)} % poikkeaa vahvistetusta ${INV.num(r.pct, 2)} % – laskutetaan vahvistetun mukaan`);
+        if (!r.pct) return;
         billedRows.push(r);
         const label = [r.area, r.estateName, r.estate].filter(Boolean).join(' ');
         lines.push({ desc: `${tx(S.lineText) || 'Kunnossapitomaksu ' + y}, ${label} (${INV.num(r.pct, 3)} %)`,
           qty: 1, unit: 'kpl', price: Math.round(a * r.pct) / 100, vat: S.vat });
       });
       const estates = [...new Set(billedRows.map(r => [r.estateName, r.estate].filter(Boolean).join(' ')))];
-      if (!lines.length) return;          // ei laskutettavaa tällä kertaa
+      if (!lines.length && !errs.length) return;          // ei laskutettavaa tällä kertaa
       if (!f.addr || !f.zip || !f.city) warns.push('Osoite puutteellinen – ei voi postittaa');
       const mails = splitEmails(f.email);
       if (!mails.length) warns.push('Ei sähköpostiosoitetta');
@@ -323,7 +331,7 @@ const BATCH = {
       `<div class="bsum"><span class="pill">${this.count('drain', ok.length)}</span>` + this.numberPill(ok) +
       `<span class="pill">yhteensä ${INV.money(total)}</span>` + areaPills +
       (r.plan.length - ok.length ? `<span class="pill warn">${r.plan.length - ok.length} virheellistä – ohitetaan</span>` : '') +
-      (r.skipped ? `<span class="pill">${r.skipped} riviä ei käytössä</span>` : '') + '</div>' +
+      (r.skipped ? `<span class="pill">${r.skipped} tilaa ei käytössä</span>` : '') + '</div>' +
       (noAmt.length ? `<div class="small muted">Ei laskuteta tällä kertaa: ${noAmt.map(esc).join(', ')}</div>` : '') +
       (!r.areaInfo.some(a => a.amount) ? '<div class="small muted">Anna vähintään yhdelle kuivatusalueelle laskutettava summa.</div>' : '');
     $('drainList').innerHTML = r.plan.map((p, k) => this.cardHtml('drain', p, k)).join('');

@@ -1,11 +1,11 @@
 /* app.js – Laskutus, käyttöliittymä (rekisteröinnitön OneDrive-malli) */
 const $ = (id) => document.getElementById(id);
 const cfg = CFG.data;
-const REG_CACHE = 'laskutus.reg.v4';
+const REG_CACHE = 'laskutus.reg.v5';
 const STATE_LOCAL = 'laskutus.state.v1';
 const LOGO_KEY = 'laskutus.logo.v1';
 const STATE_FILE = 'laskutus-tila.json';
-let REG = { customers: [], products: [], billers: [], self: [], road: null, drain: null, source: '', loaded: '' };
+let REG = { customers: [], products: [], billers: [], self: [], road: null, drain: null, letters: [], source: '', loaded: '' };
 let ROWS = [];
 let STATE = { next: {}, log: [] };
 let LAST = null;
@@ -17,8 +17,8 @@ const norm = (s) => String(s ?? '').toLowerCase().trim()
   .replace(/ä/g, 'a').replace(/ö/g, 'o').replace(/å/g, 'a').replace(/[\s_.\-:,()%/€]/g, '');
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const str = (v) => String(v ?? '').trim();
-function pick(row, names) {
-  for (const n of names) for (const k of Object.keys(row)) if (norm(k) === norm(n)) return row[k];
+function pick(row, name) {
+  for (const k of Object.keys(row)) if (norm(k) === norm(name)) return row[k];
   return '';
 }
 function num(v) {
@@ -159,58 +159,55 @@ function initDateFields() {
 }
 
 /* ===== Rekisterin luku ===== */
-function findSheet(wb, names) {
-  return wb.SheetNames.find(n => names.some(m => norm(n) === norm(m))) ||
-         wb.SheetNames.find(n => names.some(m => norm(n).includes(norm(m))));
+function findSheet(wb, name) {
+  return wb.SheetNames.find(n => norm(n) === norm(name));
 }
-function sheetRows(wb, names) {
-  const n = findSheet(wb, names);
+function sheetRows(wb, name) {
+  const n = findSheet(wb, name);
   return n ? XLSX.utils.sheet_to_json(wb.Sheets[n], { defval: '', raw: true }) : [];
 }
 
 function parseBillers(wb) {
-  const sn = findSheet(wb, ['laskuttajarekisteri', 'laskuttaja', 'lahettaja']);
+  const sn = findSheet(wb, 'Laskuttajarekisteri');
   if (!sn) return [];
   const a = XLSX.utils.sheet_to_json(wb.Sheets[sn], { header: 1, defval: '', raw: true });
   if (a.length < 2) return [];
   const rowOf = {};
   for (let r = 1; r < a.length; r++) rowOf[norm(a[r][0])] = a[r];
-  const g = (c, ...names) => {
-    for (const n of names) { const r = rowOf[norm(n)]; if (r && str(r[c]) !== '') return str(r[c]); }
-    return '';
-  };
+  const g = (c, name) => { const r = rowOf[norm(name)]; return r ? str(r[c]) : ''; };
   const width = Math.max(...a.map(r => r.length));
   const out = [];
   for (let c = 1; c < width; c++) {
-    const name = g(c, 'Saaja', 'Nimi');
+    const name = g(c, 'Saaja');
     if (!name) continue;
-    const interest = g(c, 'Viivästyskorko (%)', 'Viivästyskorko');
+    const interest = g(c, 'Viivästyskorko (%)');
+    const vat = g(c, 'Oletus-ALV (%)');
     out.push({
       label: str(a[0][c]) || `Laskuttaja ${c}`, name,
       sellerNo: g(c, 'Myyjänro'),
-      addr: g(c, 'Lähiosoite', 'Osoite'),
+      addr: g(c, 'Lähiosoite'),
       zip: zipFi(g(c, 'Postinumero'), g(c, 'Maa')),
       city: g(c, 'Postitoimipaikka'),
       country: g(c, 'Maa'),
-      phone: g(c, 'Puhelin 1', 'GSM 1', 'Puhelin'),
-      phone2: g(c, 'Puhelin 2', 'GSM 2'),
+      phone: g(c, 'Puhelin 1'),
+      phone2: g(c, 'Puhelin 2'),
       email: g(c, 'Sähköposti'),
-      web: g(c, 'Internet', 'Verkkosivu'),
-      bank: g(c, 'Pankki 1', 'Pankki'),
-      iban: g(c, 'IBAN 1', 'IBAN'),
-      bic: g(c, 'BIC 1', 'BIC'),
+      web: g(c, 'Internet'),
+      bank: g(c, 'Pankki 1'),
+      iban: g(c, 'IBAN 1'),
+      bic: g(c, 'BIC 1'),
       bank2: g(c, 'Pankki 2'),
       iban2: g(c, 'IBAN 2'),
       bic2: g(c, 'BIC 2'),
       bid: g(c, 'Y-tunnus'),
-      vatId: g(c, 'ALV-numero', 'ALV-tunniste'),
-      tradeNo: g(c, 'Kaupparek. nro', 'Kaupparekisterinumero'),
-      terms: num(g(c, 'Maksuehto (pv)', 'Maksuehto')),
+      vatId: g(c, 'ALV-numero'),
+      tradeNo: g(c, 'Kaupparek. nro'),
+      terms: num(g(c, 'Maksuehto (pv)')),
       interest: interest ? (/%/.test(interest) ? interest : interest.replace('.', ',') + ' %') : '',
-      nextNumber: num(g(c, 'Seuraava laskunumero', 'Laskunumero')),
+      nextNumber: num(g(c, 'Seuraava laskunumero')),
       prefix: g(c, 'Laskunumeron etuliite'),
       currency: g(c, 'Oletusvaluutta') || 'EUR',
-      vat: g(c, 'Oletus-ALV (%)') === '' ? 25.5 : num(g(c, 'Oletus-ALV (%)')),
+      vat: vat === '' ? 25.5 : num(vat),
       note: g(c, 'Laskun vakioteksti'),
       logo: g(c, 'Logo tiedostonimi')
     });
@@ -222,35 +219,35 @@ function parseBillers(wb) {
    tieyksikköluettelo, jonka otsikkorivillä on sarakkeet Kiinteistö ja Maksaja.
    Yksi rivi = yksi tienkäyttöyksikkö; maksajan tiedot toistetaan jokaisella rivillä. */
 function parseRoad(wb) {
-  const sn = findSheet(wb, ['tiekunta']);
+  const sn = findSheet(wb, 'Tiekunta');
   if (!sn) return null;
   const a = XLSX.utils.sheet_to_json(wb.Sheets[sn], { header: 1, defval: '', raw: true });
   const h = a.findIndex(r => r.some(c => norm(c) === 'kiinteisto') && r.some(c => norm(c) === 'maksaja'));
   if (h < 0) return null;
   const set = {};
   for (let i = 0; i < h; i++) { const k = norm(a[i][0]); if (k && set[k] === undefined) set[k] = a[i][1]; }
-  const g = (...n) => { for (const x of n) { const v = set[norm(x)]; if (v !== undefined && str(v) !== '') return v; } return ''; };
+  const g = (name) => { const v = set[norm(name)]; return v === undefined ? '' : v; };
   const settings = {
-    name: str(g('Tiekunta', 'Tiekunnan nimi')),
-    roadNo: str(g('Tie / selitelmä', 'Tienumero')),
+    name: str(g('Tiekunta')),
+    roadNo: str(g('Tie / selitelmä')),
     year: str(g('Laskutusvuosi')),
     method: norm(g('Laskentatapa')).startsWith('yksikko') ? 'unit' : 'budget',
-    budget: num(g('Ositeltava summa (€)', 'Ositeltava summa')),
-    unitPrice: num(g('Yksikköhinta (€/tieyks.)', 'Yksikköhinta')),
-    baseFee: num(g('Perusmaksu (€ / maksaja)', 'Perusmaksu')),
+    budget: num(g('Ositeltava summa (€)')),
+    unitPrice: num(g('Yksikköhinta (€/tieyks.)')),
+    baseFee: num(g('Perusmaksu (€ / maksaja)')),
     baseText: str(g('Perusmaksun teksti')),
     lineText: str(g('Ylläpitomaksun teksti')),
-    vat: num(g('ALV %', 'ALV')),
+    vat: num(g('ALV %')),
     note: str(g('Laskun lisäteksti')),
     confirmed: str(g('Vahvistettu'))
   };
   const head = a[h].map(norm);
-  const col = (...n) => { for (const x of n) { const i = head.indexOf(norm(x)); if (i >= 0) return i; } return -1; };
+  const col = (name) => head.indexOf(norm(name));
   const C = {
     act: col('Käytössä'), estate: col('Kiinteistö'), name: col('Maksaja'), addr: col('Osoite'),
     zip: col('Postinumero'), city: col('Postitoimipaikka'), email: col('Sähköposti'),
     unit: col('Tienkäyttöyksikkö'), cnt: col('Yksiköiden lkm'), w: col('Painoluku'), km: col('Matka (km)'),
-    km2: col('Matkan korjauskerroin'), w2: col('Painoluvun korjauskerroin'), tu: col('Tieyksiköt'), info: col('Lisätieto')
+    km2: col('Matkan korjauskerroin'), w2: col('Painoluvun korjauskerroin'), info: col('Lisätieto')
   };
   const v = (r, i) => i >= 0 ? r[i] : '';
   const f1 = (x) => str(x) === '' ? 1 : num(x);
@@ -260,10 +257,8 @@ function parseRoad(wb) {
     if (!r.some(c => str(c) !== '')) continue;
     const estate = str(v(r, C.estate)), name = str(v(r, C.name));
     if (!estate && !name) continue;
-    let units = str(v(r, C.cnt)) !== ''
-      ? num(v(r, C.cnt)) * num(v(r, C.w)) * num(v(r, C.km)) * f1(v(r, C.km2)) * f1(v(r, C.w2))
-      : num(v(r, C.tu));
-    units = Math.round(units * 1000) / 1000;
+    /* tieyksiköt = lkm × painoluku × matka × korjauskertoimet (tyhjä kerroin = 1) */
+    const units = Math.round(num(v(r, C.cnt)) * num(v(r, C.w)) * num(v(r, C.km)) * f1(v(r, C.km2)) * f1(v(r, C.w2)) * 1000) / 1000;
     rows.push({
       row: i + 1, active: yes(v(r, C.act)), estate, name,
       addr: str(v(r, C.addr)), zip: zipFi(v(r, C.zip)), city: str(v(r, C.city)),
@@ -276,30 +271,34 @@ function parseRoad(wb) {
 
 /* Ojitusyhteisö-välilehti (yksi ojitusyhteisö per rekisteri):
    1) yläosa: yhteisön tiedot (A = nimike, B = arvo)
-   2) kuivatusalueiden taulukko: Kuivatusalue | Laskutettava summa (€) | Selite
-   3) osakasluettelo: rivi per tila ja kuivatusalue; maksajan tiedot toistetaan jokaisella rivillä */
+   2) kuivatusalueet: Kuivatusalue | Laskutettava summa (€) | Selite
+   3) osittelulaskelma: rivi per osittelukuvio; maksajan tiedot toistetaan jokaisella rivillä.
+   Kuviorivit kootaan tiloiksi (kuivatusalue + kiinteistötunnus + tilan nimi).
+   Kuvion mha = pinta-ala × maanarvojyvä × kuivatusjyvä (2 des.), 0 jos hyöty vastaa haittaa, + mha-korjaus.
+   Tilakohtaiset arvot (kiinteä osuus, osuuden korjaus, vahvistettu osuus) luetaan siltä riviltä, jolle ne on täytetty.
+   Laskutus tehdään aina vahvistetun osuuden mukaan; kuvioista laskettu osuus on tarkistus. */
 function parseDrain(wb) {
-  const sn = findSheet(wb, ['ojitusyhteiso']);
+  const sn = findSheet(wb, 'Ojitusyhteisö');
   if (!sn) return null;
   const a = XLSX.utils.sheet_to_json(wb.Sheets[sn], { header: 1, defval: '', raw: true });
-  const ah = a.findIndex(r => norm(r[0]) === 'kuivatusalue' && r.some(c => norm(c).startsWith('laskutettavasumma')));
+  const ah = a.findIndex(r => norm(r[0]) === 'kuivatusalue' && r.some(c => norm(c) === norm('Laskutettava summa (€)')));
   const mh = a.findIndex(r => r.some(c => norm(c) === 'kiinteistotunnus') && r.some(c => norm(c) === 'maksaja'));
   if (mh < 0) return null;
   const set = {};
   for (let i = 0; i < (ah >= 0 ? ah : mh); i++) { const k = norm(a[i][0]); if (k && set[k] === undefined) set[k] = a[i][1]; }
-  const g = (...n) => { for (const x of n) { const v = set[norm(x)]; if (v !== undefined && str(v) !== '') return v; } return ''; };
+  const g = (name) => { const v = set[norm(name)]; return v === undefined ? '' : v; };
   const settings = {
-    name: str(g('Ojitusyhteisö', 'Ojitusyhteisön nimi')),
+    name: str(g('Ojitusyhteisö')),
     project: str(g('Hanke')),
     year: str(g('Laskutusvuosi')),
     lineText: str(g('Laskurivin teksti')),
-    vat: num(g('ALV %', 'ALV')),
+    vat: num(g('ALV %')),
     note: str(g('Laskun lisäteksti'))
   };
   const areas = [];
   if (ah >= 0) {
     const hh = a[ah].map(norm);
-    const ci = hh.findIndex(c => c.startsWith('laskutettavasumma')), ti = hh.indexOf('selite');
+    const ci = hh.indexOf(norm('Laskutettava summa (€)')), ti = hh.indexOf(norm('Selite'));
     for (let i = ah + 1; i < mh; i++) {
       const name = str(a[i][0]);
       if (!name || norm(name).startsWith('yhteensa')) { if (!name && areas.length) break; continue; }
@@ -307,80 +306,129 @@ function parseDrain(wb) {
     }
   }
   const head = a[mh].map(norm);
-  const col = (...n) => { for (const x of n) { const i = head.indexOf(norm(x)); if (i >= 0) return i; } return -1; };
+  const col = (name) => head.indexOf(norm(name));
   const C = { act: col('Käytössä'), area: col('Kuivatusalue'), estate: col('Kiinteistötunnus'), en: col('Tilan nimi'),
-    name: col('Maksaja'), rec: col('Laskutusvastaanottaja', 'c/o'), addr: col('Osoite'), zip: col('Postinumero'),
-    city: col('Postitoimipaikka'), email: col('Sähköposti'), mha: col('Muunnettu hyötyala (mha)', 'Muunnettu hyötyala'),
-    pct: col('Osuus %', 'Osuus'), info: col('Lisätieto', 'Muut omistajat') };
+    name: col('Maksaja'), rec: col('Laskutusvastaanottaja'), addr: col('Osoite'), zip: col('Postinumero'),
+    city: col('Postitoimipaikka'), email: col('Sähköposti'),
+    ha: col('Osittelukuvion pinta-ala (ha)'), mj: col('Maanarvojyvä'), kj: col('Kuivatusjyvä'),
+    hvh: col('Hyöty vastaa haittaa'), corr: col('mha-korjaus'), fixed: col('Kiinteä osuus %'), pcorr: col('Osuuden korjaus %'),
+    ver: col('Vahvistettu osuus %'), info: col('Lisätieto') };
   const v = (r, i) => i >= 0 ? r[i] : '';
-  const rows = [];
+  const tilas = new Map(), rows = [];
+  const label = { pct: 'Vahvistettu osuus', fixed: 'Kiinteä osuus', pcorr: 'Osuuden korjaus' };
+  const tval = (t, f, raw, r) => {
+    if (str(raw) === '') return;
+    const x = num(raw);
+    if (t[f] === null) t[f] = x;
+    else if (Math.abs(t[f] - x) > 1e-9) t.conflicts.push(`${label[f]} täytetty useammalle riville eri arvoin (rivi ${r})`);
+  };
   for (let i = mh + 1; i < a.length; i++) {
     const r = a[i];
     if (!r.some(c => str(c) !== '')) continue;
-    const area = str(v(r, C.area)), estate = str(v(r, C.estate)), name = str(v(r, C.name));
-    if (!estate && !name) continue;
-    rows.push({ row: i + 1, active: yes(v(r, C.act)), area, estate, estateName: str(v(r, C.en)), name,
-      recipient: str(v(r, C.rec)), addr: str(v(r, C.addr)), zip: zipFi(v(r, C.zip)), city: str(v(r, C.city)),
-      email: str(v(r, C.email)), mha: num(v(r, C.mha)), pct: num(v(r, C.pct)), info: str(v(r, C.info)) });
+    const area = str(v(r, C.area)), estate = str(v(r, C.estate)), estateName = str(v(r, C.en)), name = str(v(r, C.name));
+    if (!estate && !name && !estateName) continue;
+    const k = area + '|' + estate + '|' + SEARCH.fold(estateName);
+    let t = tilas.get(k);
+    if (!t) {
+      t = { row: i + 1, active: false, area, estate: estate === '-' ? '' : estate, estateName, name,
+        recipient: str(v(r, C.rec)), addr: str(v(r, C.addr)), zip: zipFi(v(r, C.zip)), city: str(v(r, C.city)),
+        email: str(v(r, C.email)), mha: 0, pct: null, fixed: null, pcorr: null, info: str(v(r, C.info)), conflicts: [] };
+      tilas.set(k, t); rows.push(t);
+    }
+    const act = yes(v(r, C.act));
+    if (act) {
+      t.active = true;
+      const ha = num(v(r, C.ha)), hy = num(v(r, C.mj)) * num(v(r, C.kj));
+      t.mha += (yes(v(r, C.hvh), false) ? 0 : Math.round(ha * hy * 100 + 1e-9) / 100) + num(v(r, C.corr));
+    }
+    tval(t, 'pct', v(r, C.ver), i + 1);
+    tval(t, 'fixed', v(r, C.fixed), i + 1);
+    tval(t, 'pcorr', v(r, C.pcorr), i + 1);
   }
+  rows.forEach(t => { t.mha = Math.round(t.mha * 1000) / 1000; });
+  const byArea = {};
+  rows.filter(t => t.active).forEach(t => {
+    const g = byArea[t.area] = byArea[t.area] || { mha: 0, fixed: 0 };
+    if (t.fixed) g.fixed += t.fixed; else g.mha += t.mha;
+  });
+  rows.forEach(t => {
+    const g = byArea[t.area] || { mha: 0, fixed: 0 };
+    const base = t.fixed ? t.fixed : (g.mha ? Math.round(t.mha / g.mha * (100 - g.fixed) * 100 + 1e-9) / 100 : 0);
+    t.calcPct = Math.round((base + (t.pcorr || 0)) * 100) / 100;
+  });
   return { settings, areas, rows };
 }
 
 function parseWorkbook(buf, source) {
   const wb = XLSX.read(buf, { type: 'array' });
-  const customers = sheetRows(wb, ['asiakasrekisteri', 'asiakkaat']).map(r => {
-    const country = str(pick(r, ['Maa']));
+  const customers = sheetRows(wb, 'Asiakasrekisteri').map(r => {
+    const country = str(pick(r, 'Maa'));
     return {
-      id: str(pick(r, ['Asiakasnumero', 'Asiakasnro'])),
-      name: str(pick(r, ['Nimi'])),
-      addr: str(pick(r, ['Osoite', 'Lähiosoite'])),
-      zip: zipFi(pick(r, ['Postinumero']), country),
-      city: str(pick(r, ['Postitoimipaikka'])),
+      id: str(pick(r, 'Asiakasnumero')),
+      name: str(pick(r, 'Nimi')),
+      addr: str(pick(r, 'Osoite')),
+      zip: zipFi(pick(r, 'Postinumero'), country),
+      city: str(pick(r, 'Postitoimipaikka')),
       country,
-      bid: str(pick(r, ['Y-tunnus'])),
-      email: str(pick(r, ['Sähköposti'])),
-      terms: num(pick(r, ['Maksuehto', 'Maksuehto (pv)'])),
-      recipient: str(pick(r, ['Laskutusvastaanottaja'])),
-      mails: splitEmails(pick(r, ['Laskutussähköposti'])),
-      einv: str(pick(r, ['Verkkolaskuosoite'])),
-      operator: str(pick(r, ['Välittäjä']))
+      bid: str(pick(r, 'Y-tunnus')),
+      email: str(pick(r, 'Sähköposti')),
+      terms: num(pick(r, 'Maksuehto')),
+      recipient: str(pick(r, 'Laskutusvastaanottaja')),
+      mails: splitEmails(pick(r, 'Laskutussähköposti')),
+      einv: str(pick(r, 'Verkkolaskuosoite')),
+      operator: str(pick(r, 'Välittäjä'))
     };
   }).filter(c => c.name);
-  const products = sheetRows(wb, ['tuoterekisteri', 'tuotteet']).map(r => ({
-    code: str(pick(r, ['Tuotekoodi', 'Koodi'])),
-    name: str(pick(r, ['Tuote', 'Nimi'])),
-    unit: str(pick(r, ['Yksikkö'])),
-    price: num(pick(r, ['Hinta, alv 0%', 'Hinta alv 0%', 'Hinta'])),
-    vat: pick(r, ['ALV', 'ALV %']) === '' ? null : num(pick(r, ['ALV', 'ALV %']))
+  const products = sheetRows(wb, 'Tuoterekisteri').map(r => ({
+    code: str(pick(r, 'Tuotekoodi')),
+    name: str(pick(r, 'Tuote')),
+    unit: str(pick(r, 'Yksikkö')),
+    price: num(pick(r, 'Hinta, alv 0%')),
+    vat: str(pick(r, 'ALV')) === '' ? null : num(pick(r, 'ALV'))
   })).filter(p => p.name);
-  const self = sheetRows(wb, ['itselaskutus']).map((r, i) => {
-    const qtyRaw = pick(r, ['Määrä']);
-    const vatRaw = pick(r, ['ALV', 'ALV %']);
-    const priceRaw = pick(r, ['Hinta, alv 0%', 'Hinta alv 0%', 'Hinta']);
+  const self = sheetRows(wb, 'Itselaskutus').map((r, i) => {
+    const qtyRaw = pick(r, 'Määrä');
+    const vatRaw = pick(r, 'ALV');
+    const priceRaw = pick(r, 'Hinta, alv 0%');
     return {
       row: i + 2,
-      active: yes(pick(r, ['Käytössä'])),
-      name: str(pick(r, ['Nimi', 'Saaja'])),
-      addr: str(pick(r, ['Osoite', 'Lähiosoite'])),
-      zip: zipFi(pick(r, ['Postinumero'])),
-      city: str(pick(r, ['Postitoimipaikka'])),
-      email: str(pick(r, ['Sähköposti'])),
-      iban: str(pick(r, ['Tilinumero', 'IBAN'])).toUpperCase(),
-      desc: str(pick(r, ['Selite', 'Tuote'])),
+      active: yes(pick(r, 'Käytössä')),
+      name: str(pick(r, 'Nimi')),
+      addr: str(pick(r, 'Osoite')),
+      zip: zipFi(pick(r, 'Postinumero')),
+      city: str(pick(r, 'Postitoimipaikka')),
+      email: str(pick(r, 'Sähköposti')),
+      iban: str(pick(r, 'Tilinumero')).toUpperCase(),
+      desc: str(pick(r, 'Selite')),
       qty: str(qtyRaw) === '' ? 1 : num(qtyRaw),
-      unit: str(pick(r, ['Yksikkö'])),
+      unit: str(pick(r, 'Yksikkö')),
       price: num(priceRaw),
       vat: str(vatRaw) === '' ? null : num(vatRaw),
       priceEmpty: str(priceRaw) === ''
     };
   }).filter(x => x.name || x.desc || !x.priceEmpty);
+  /* Massakirjeen vastaanottajat */
+  const letters = sheetRows(wb, 'Kirjeen vastaanottajat').map((r, i) => {
+    const country = str(pick(r, 'Maa'));
+    return {
+      row: i + 2, active: yes(pick(r, 'Käytössä')),
+      name: str(pick(r, 'Nimi')),
+      recipient: str(pick(r, 'Laskutusvastaanottaja / c/o')),
+      addr: str(pick(r, 'Osoite')),
+      zip: zipFi(pick(r, 'Postinumero'), country),
+      city: str(pick(r, 'Postitoimipaikka')),
+      country,
+      email: str(pick(r, 'Sähköposti')),
+      info: str(pick(r, 'Lisätieto'))
+    };
+  }).filter(r => r.name);
   const road = parseRoad(wb);
   const drain = parseDrain(wb);
   const billers = parseBillers(wb);
   if (!customers.length && !products.length && !billers.length) {
     throw new Error('Tiedostosta ei löytynyt Asiakas-, Tuote- tai Laskuttajarekisteriä.');
   }
-  return { customers, products, billers, self, road, drain, source, loaded: nowFi() };
+  return { customers, products, billers, self, road, drain, letters, source, loaded: nowFi() };
 }
 
 function setRegistry(reg) {
@@ -490,6 +538,9 @@ function fillRegistry() {
   if (cfg.featDrain) extra.push(REG.drain
     ? `<span class="pill">${esc(REG.drain.settings.name || 'Ojitusyhteisö')} · ${REG.drain.areas.length} kuivatusaluetta · ${REG.drain.rows.length} tilariviä</span>`
     : '<span class="pill warn">Ojitusyhteisö-välilehti puuttuu</span>');
+  if (cfg.featLetter) extra.push((REG.letters || []).length
+    ? `<span class="pill">${REG.letters.length} kirjeen vastaanottajaa</span>`
+    : '<span class="pill warn">Kirjeen vastaanottajat -välilehti puuttuu</span>');
   $('regSummary').innerHTML = has
     ? `<span class="pill">${REG.customers.length} asiakasta</span>` +
       `<span class="pill">${REG.products.length} tuotetta</span>` +
@@ -504,6 +555,7 @@ function fillRegistry() {
   renderRows();
   applyBiller();
   if (typeof BATCH !== 'undefined') BATCH.refresh();
+  if (typeof LETTER !== 'undefined' && cfg.featLetter) LETTER.refresh();
 }
 async function applyBiller() {
   const b = currentBiller();
@@ -986,7 +1038,7 @@ function renderLocalArchive() {
 const SET_MAP = {
   cfgRegFile: 'regFile', cfgOutFolder: 'outFolder', cfgYearFolders: 'yearFolders', cfgFilePattern: 'filePattern',
   cfgMailSubject: 'mailSubject', cfgMailBody: 'mailBody', cfgPdfColor: 'pdfColor', cfgBarcode: 'barcode', cfgVatRates: 'vatRates',
-  cfgFeatSelf: 'featSelf', cfgFeatRoad: 'featRoad', cfgFeatDrain: 'featDrain', cfgSelfMailSubject: 'selfMailSubject', cfgSelfMailBody: 'selfMailBody'
+  cfgFeatSelf: 'featSelf', cfgFeatRoad: 'featRoad', cfgFeatDrain: 'featDrain', cfgFeatLetter: 'featLetter', cfgSelfMailSubject: 'selfMailSubject', cfgSelfMailBody: 'selfMailBody'
 };
 function syncStyleUi() { $('cfgPdfColor').disabled = !$('cfgStyleColor').checked; $('selfMailSettings').hidden = !$('cfgFeatSelf').checked; }
 function fillSettings() {
@@ -1016,8 +1068,9 @@ function applyFeatures() {
   $('tabSelf').hidden = !cfg.featSelf;
   $('tabRoad').hidden = !cfg.featRoad;
   $('tabDrain').hidden = !cfg.featDrain;
+  $('tabLetter').hidden = !cfg.featLetter;
   const act = document.querySelector('.view.active');
-  if (act && ((act.id === 'selfView' && !cfg.featSelf) || (act.id === 'roadView' && !cfg.featRoad) || (act.id === 'drainView' && !cfg.featDrain))) showView('laskuView');
+  if (act && ((act.id === 'selfView' && !cfg.featSelf) || (act.id === 'roadView' && !cfg.featRoad) || (act.id === 'drainView' && !cfg.featDrain) || (act.id === 'letterView' && !cfg.featLetter))) showView('laskuView');
 }
 $('cfgStyleBw').onchange = syncStyleUi;
 $('cfgStyleColor').onchange = syncStyleUi;
@@ -1056,6 +1109,7 @@ function showView(id) {
   document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.id === id));
   if (id === 'arkistoView') refreshArchive().catch(() => {});
   if ((id === 'selfView' || id === 'roadView' || id === 'drainView') && typeof BATCH !== 'undefined') BATCH.refresh();
+  if (id === 'letterView' && typeof LETTER !== 'undefined') LETTER.refresh();
 }
 document.querySelectorAll('.tab').forEach(t => { t.onclick = () => showView(t.dataset.view); });
 $('btnAddRow').onclick = () => { addRow(); const ins = $('rivit').querySelectorAll('input[data-f="desc"]'); if (ins.length) ins[ins.length - 1].focus(); };
@@ -1081,7 +1135,7 @@ async function startApp() {
     try {
       const cached = JSON.parse(localStorage.getItem(REG_CACHE) || 'null');
       if (cached && (cached.customers || cached.billers)) {
-        REG = { self: [], road: null, drain: null, ...cached };
+        REG = { self: [], road: null, drain: null, letters: [], ...cached };
         $('fileName').textContent = cached.source;
         fillRegistry();
       } else showSetup('file');

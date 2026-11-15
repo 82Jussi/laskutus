@@ -17,6 +17,7 @@ const DEFAULT_CFG = {
   featSelf: false,
   featRoad: false,
   featDrain: false,
+  featLetter: false,
   selfMailSubject: 'Itselaskutus {nro} / {laskuttaja}',
   selfMailBody:
     'Hei,\n\nOhessa itselaskutus {nro}: {selite}.\nMaksamme {summa} tilillesi {tilinumero} viimeistään {erapaiva}.\n\n' +

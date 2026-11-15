@@ -1,7 +1,7 @@
 # Laskutus – rekisteröinnitön OneDrive-malli
 
 Selainohjelma laskujen tekemiseen. Ei Microsoft-kirjautumista, Azurea eikä Client ID:tä.
-Tiedostot: index.html, styles.css, config.js, storage.js, search.js, invoice.js, app.js, batch.js,
+Tiedostot: index.html, styles.css, config.js, storage.js, search.js, invoice.js, app.js, batch.js, letter.js,
 manifest.json ja kuvakkeet. Rekisteri-Excel kuuluu OneDriven Laskutus-kansioon, ei GitHubiin.
 
 ## Tiekunnan laskutus (Asetukset → Erityisominaisuudet → Tiekunnan laskutus)
@@ -17,7 +17,7 @@ Rekisterin **Tiekunta**-välilehti:
   Postinumero, Postitoimipaikka, Sähköposti, Tienkäyttöyksikkö, Liikennelaji,
   Yksiköiden lkm, Painoluku, Matka (km), Matkan korjauskerroin, Painoluvun korjauskerroin,
   (Tieyksiköt, Osuus %, Osittelu € – tarkistuskaavat), Lisätieto.
-- Tieyksiköt = lkm × painoluku × matka × korjauskertoimet (tyhjä kerroin = 1).
+- Tieyksiköt = lkm × painoluku × matka × korjauskertoimet (tyhjä kerroin = 1). Ohjelma laskee tieyksiköt itse.
 
 Laskutus:
 - Jokainen maksaja saa yhden laskun: perusmaksu kerran ja ylläpitomaksu kiinteistöittäin
@@ -31,12 +31,15 @@ Laskutus:
 Yksi ojitusyhteisö per rekisteri. Rekisterin **Ojitusyhteisö**-välilehti:
 - Yläosa: Ojitusyhteisö, Hanke, Laskutusvuosi, Laskurivin teksti, ALV %, Laskun lisäteksti.
 - Kuivatusalueet: Kuivatusalue | Laskutettava summa (€) | Selite. Tyhjä tai 0 = aluetta ei laskuteta.
-  Summia voi muuttaa myös ohjelmassa ennen laskujen muodostusta.
-- Osakasluettelo (rivi per tila ja alue): Käytössä, Kuivatusalue, Kiinteistötunnus, Tilan nimi, Maksaja,
-  Laskutusvastaanottaja, Osoite, Postinumero, Postitoimipaikka, Sähköposti, Muunnettu hyötyala (mha), Osuus %, Lisätieto.
+- Osittelulaskelma, yksi rivi per kuvio: maksajan tiedot, Osittelukuvion numero, Osittelukuvion tiluslaji,
+  Osittelukuvion pinta-ala (ha), Maanpinta, Vesipinta, Etäisyys (m),
+  Maanarvojyvä, Kuivatusjyvä, Hyöty vastaa haittaa, mha-korjaus sekä tilakohtaiset Kiinteä osuus %, Osuuden korjaus % ja
+  Vahvistettu osuus % (tilan ensimmäiselle riville).
+- Harmaat kaavat: Kuivatuslisä = max(0, (vesipinta + 1,4 + 0,002 × etäisyys − maanpinta) × 100), Hyötyluku = maanarvojyvä × kuivatusjyvä,
+  mha = pinta-ala × hyötyluku (0 jos hyöty vastaa haittaa) + korjaus, tilan osuus = tilan mha / alueen mha × (100 − kiinteät osuudet) + korjaus.
 
-Laskutus: tilan osuus = alueen summa × Osuus % / 100 (senteiksi pyöristettynä). Jokainen maksaja saa yhden laskun,
-jossa jokainen laskutettava tila ja alue on omana rivinään. Ohjelma varoittaa, jos alueen osuudet eivät ole yhteensä 100 %.
+Laskutus: tilan osuus = alueen summa × **Vahvistettu osuus %** / 100. Ohjelma laskee osuuden myös kuvioista ja varoittaa,
+jos laskettu poikkeaa vahvistetusta. Jokainen maksaja saa yhden laskun kaikista tiloistaan ja alueistaan.
 
 ### Laskurivit ja kertalasku
 - Määrä ja hinta kirjoitetaan pilkulla (esim. 85,84). Negatiivinen summa (hyvitys) kirjoitetaan miinusmerkillä
@@ -50,3 +53,19 @@ Kalenteripainike avaa ohjelman oman kalenterin, jossa viikko alkaa maanantaista 
 #### Tuotevalinta laskuriveillä
 Tuotekentän napautus avaa koko tuoterekisterin selattavaksi (kuten Asiakas-kenttä). Kirjoitettu hakusana suodattaa listaa,
 ja kirjoitettu teksti jää vapaaksi riviksi, jos listasta ei valita tuotetta.
+
+##### Massakirje (Asetukset → Erityisominaisuudet → Massakirje)
+
+Sama kirje tulostetaan jokaiselle rekisterin välilehden **Kirjeen vastaanottajat** vastaanottajalle
+(Käytössä, Nimi, Laskutusvastaanottaja / c/o, Osoite, Postinumero, Postitoimipaikka, Maa, Sähköposti, Lisätieto).
+Lähettäjä valitaan Laskuttajarekisteristä. Osoite osuu E5-ikkunakuoreen kuten laskuissa.
+Viestissä **lihavointi**, rivin loppuun ___ = täyttöviiva. Muuttujat {nimi} {lisatieto} {pvm} {lahettaja}
+{allekirjoittaja} {asema} {puhelin} {sahkoposti} {osoite}. Tuloksena yksi tulostettava PDF ja erilliset PDF:t
+kansioon Laskut/vuosi/Kirjeet/otsikko. Ohjelmakoodi: letter.js.
+
+## Rekisterin sarakkeet
+
+Ohjelma lukee välilehdet ja sarakkeet niiden nimen perusteella (järjestys voi vaihdella, isot/pienet kirjaimet ja
+välilyönnit eivät haittaa). Välilehtien nimet: Asiakasrekisteri, Tuoterekisteri, Laskuttajarekisteri, Itselaskutus,
+Tiekunta, Ojitusyhteisö, Kirjeen vastaanottajat. Harmaat kaavasarakkeet ovat vain tarkistusta varten; ohjelma laskee
+samat arvot itse. Vanhoja sarakenimiä ei tunnisteta.
