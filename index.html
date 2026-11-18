@@ -404,7 +404,7 @@
     <p>Valitse <b>laskuttaja</b> ja <b>asiakas</b> (kirjoita nimi tai asiakasnumero, tai napauta kenttää ja selaa). Laskutussähköposti täyttyy rekisteristä; ensimmäinen osoite on vastaanottaja, muut kopioita.</p>
     <p><b>Kertalaskun asiakas</b>: asiakkaan tiedot kirjoitetaan suoraan laskulle eikä niitä tallenneta rekisteriin; laskulle ei tule asiakasnumeroa.</p>
     <p><b>Laskurivit:</b> napauta tuotekenttää ja valitse tuote, kirjoita hakusana tai vapaa teksti. Määrät ja hinnat pilkulla (85,50). Hyvitys miinusmerkillä tai ±-painikkeella. ALV valitaan listasta (kannat asetuksissa).</p>
-    <p><b>Laskunumero</b> ehdotetaan automaattisesti (Laskuttajarekisterin seuraava numero, kansion laskut ja tila-tiedosto). Viitenumero muodostetaan laskunumerosta.</p>
+    <p><b>Laskunumero</b> ehdotetaan automaattisesti (Laskuttajarekisterin seuraava numero, kansion laskut ja tila-tiedosto). Viitenumero muodostetaan laskunumerosta (tiekunnan ja ojitusyhteisön laskuissa viite tulee rekisteristä).</p>
     <p><b>Tallenna lasku</b>: tietokoneella PDF tallentuu kansioon Laskut/vuosi; puhelimella avautuu jakovalikko. Sen jälkeen <i>Jaa PDF</i> (sähköposti liitteineen, vastaanottajat leikepöydällä) tai <i>Avaa sähköposti</i> (viesti valmiina, PDF liitetään itse).</p>
     <p>Laskulla puuttuvat tiedot jätetään pois, osoite osuu E5-ikkunakuoreen (A4 kerran taitettuna) ja pankkiviivakoodi tulostuu, kun tili on FI-IBAN ja summa alle miljoona euroa.</p>
   </details>
@@ -418,9 +418,11 @@
   <details><summary>Tiekunta</summary>
     <p>Yksi tiekunta per rekisteri. <b>Tiekunta</b>-välilehden yläosassa ositeltava summa tai yksikköhinta, perusmaksu, tekstit ja lisäteksti; alla tieyksikköluettelo (rivi per tienkäyttöyksikkö). Tieyksiköt = lkm × painoluku × matka × korjauskertoimet.</p>
     <p>Jokainen maksaja saa yhden laskun: perusmaksu kerran ja ylläpitomaksu kiinteistöittäin. Laskuttajaksi valitaan automaattisesti laskuttaja, jonka nimi on sama kuin tiekunnan. Laskut tallentuvat kansioon Laskut/vuosi/Tiekunnat/tiekunta.</p>
+    <p><b>Viitenumero</b> on osakkaan kiinteä viite, joka luetaan rekisterin <b>Viitenumero</b>-sarakkeesta. Sama viite säilyy laskusta ja vuodesta toiseen. Lasku ohitetaan virheellisenä, jos viite puuttuu, ei ole kelvollinen (4–20 numeroa) tai saman maksajan riveillä on eri viitteitä.</p>
   </details>
   <details><summary>Ojitusyhteisö</summary>
     <p>Yksi ojitusyhteisö per rekisteri. <b>Ojitusyhteisö</b>-välilehdellä kuivatusalueiden laskutettavat summat ja osittelulaskelma (rivi per kuvio). Ohjelma laskee kuvioista hyötyalat ja osuudet, mutta <b>laskuttaa aina vahvistetun osuuden</b> mukaan ja varoittaa, jos laskettu poikkeaa.</p>
+    <p><b>Viitenumero</b> luetaan maksajan riviltä rekisterin <b>Viitenumero</b>-sarakkeesta samoin säännöin kuin tiekunnalla.</p>
     <p>Anna summa vain laskutettaville alueille (tyhjä tai 0 = ei laskuteta). Jokainen maksaja saa yhden laskun kaikista tiloistaan ja alueistaan.</p>
   </details>
   <details><summary>Massakirje</summary>

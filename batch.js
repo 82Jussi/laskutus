@@ -173,8 +173,10 @@ const BATCH = {
     const plan = [];
     groups.forEach(g => {
       const f = g.rows[0], errs = [], warns = [];
-      this.conflicts(g.rows, [['addr', 'osoite'], ['zip', 'postinumero'], ['city', 'postitoimipaikka'], ['email', 'sähköposti']], errs);
+      this.conflicts(g.rows, [['addr', 'osoite'], ['zip', 'postinumero'], ['city', 'postitoimipaikka'], ['email', 'sähköposti'], ['reference', 'viitenumero']], errs);
       if (!f.name) errs.push(`Maksaja puuttuu (rivi ${f.row})`);
+        if (!f.reference) errs.push(`Viitenumero puuttuu rekisteristä (rivi ${f.row})`);
+        else if (!/^\d{4,20}$/.test(f.reference)) errs.push(`Viitenumero ${f.reference} ei ole kelvollinen (rivi ${f.row})`);
       if (!f.addr || !f.zip || !f.city) warns.push('Osoite puutteellinen – ei voi postittaa');
       const mails = splitEmails(f.email);
       if (!mails.length) warns.push('Ei sähköpostiosoitetta');
@@ -196,7 +198,7 @@ const BATCH = {
       plan.push({
         key: g.key, errs, warns, units, estates: [...props.keys()],
         info: [...props.keys()].join(', ') + ' · ' + INV.num(units, 3) + ' tieyks.',
-        inv: { kind: 'road', customer: { name: f.name, addr: f.addr, zip: f.zip, city: f.city }, emails: mails, sender: b || {}, lines,
+        inv: { kind: 'road', customer: { name: f.name, addr: f.addr, zip: f.zip, city: f.city }, emails: mails, sender: b || {}, lines, reference: INV.fmtRef(f.reference),
           extraMeta: [['Tiekunta', S.name], ['Tieyksiköt', INV.num(units, 3)]] }
       });
     });
@@ -273,8 +275,10 @@ const BATCH = {
     const plan = [];
     groups.forEach(g => {
       const f = g.rows[0], errs = [], warns = [];
-      this.conflicts(g.rows, [['addr', 'osoite'], ['zip', 'postinumero'], ['city', 'postitoimipaikka'], ['email', 'sähköposti']], errs);
+      this.conflicts(g.rows, [['addr', 'osoite'], ['zip', 'postinumero'], ['city', 'postitoimipaikka'], ['email', 'sähköposti'], ['reference', 'viitenumero']], errs);
       if (!f.name) errs.push(`Maksaja puuttuu (rivi ${f.row})`);
+        if (!f.reference) errs.push(`Viitenumero puuttuu rekisteristä (rivi ${f.row})`);
+        else if (!/^\d{4,20}$/.test(f.reference)) errs.push(`Viitenumero ${f.reference} ei ole kelvollinen (rivi ${f.row})`);
       const lines = [], billedRows = [];
       g.rows.forEach(r => {
         if (!dr.areas.some(a => a.name === r.area)) errs.push(`Kuivatusalue "${r.area}" puuttuu alueiden summataulukosta (rivi ${r.row})`);
@@ -302,7 +306,7 @@ const BATCH = {
         key: g.key, errs, warns, estates,
         info: estates.join(', '),
         inv: { kind: 'drain', customer: { name: f.name, recipient: f.recipient, addr: f.addr, zip: f.zip, city: f.city },
-          emails: mails, sender: b || {}, lines, extraMeta: [['Ojitusyhteisö', S.name]] }
+          emails: mails, sender: b || {}, lines, reference: INV.fmtRef(f.reference), extraMeta: [['Ojitusyhteisö', S.name]] }
       });
     });
     return { plan, drain: S, areaInfo, skipped: dr.rows.filter(r => !r.active).length };
@@ -374,7 +378,7 @@ const BATCH = {
       inv.due = getD(kind + 'Due');
       inv.terms = num($(kind + 'Terms').value);
       inv.note = $(kind + 'Note').value.trim();
-      inv.reference = INV.reference(number);
+      inv.reference = p.inv.reference;  // tiekunta / ojitusyhteisö: osakkaan kiinteä viite rekisteristä
     }
     return inv;
   },

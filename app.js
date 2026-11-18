@@ -245,7 +245,7 @@ function parseRoad(wb) {
   const col = (name) => head.indexOf(norm(name));
   const C = {
     act: col('Käytössä'), estate: col('Kiinteistö'), name: col('Maksaja'), addr: col('Osoite'),
-    zip: col('Postinumero'), city: col('Postitoimipaikka'), email: col('Sähköposti'),
+    zip: col('Postinumero'), city: col('Postitoimipaikka'), email: col('Sähköposti'), ref: col('Viitenumero'),
     unit: col('Tienkäyttöyksikkö'), cnt: col('Yksiköiden lkm'), w: col('Painoluku'), km: col('Matka (km)'),
     km2: col('Matkan korjauskerroin'), w2: col('Painoluvun korjauskerroin'), info: col('Lisätieto')
   };
@@ -262,7 +262,7 @@ function parseRoad(wb) {
     rows.push({
       row: i + 1, active: yes(v(r, C.act)), estate, name,
       addr: str(v(r, C.addr)), zip: zipFi(v(r, C.zip)), city: str(v(r, C.city)),
-      email: str(v(r, C.email)),
+      email: str(v(r, C.email)), reference: str(v(r, C.ref)).replace(/\s/g, ''),
       unit: str(v(r, C.unit)), units, info: str(v(r, C.info))
     });
   }
@@ -309,7 +309,7 @@ function parseDrain(wb) {
   const col = (name) => head.indexOf(norm(name));
   const C = { act: col('Käytössä'), area: col('Kuivatusalue'), estate: col('Kiinteistötunnus'), en: col('Tilan nimi'),
     name: col('Maksaja'), rec: col('Laskutusvastaanottaja'), addr: col('Osoite'), zip: col('Postinumero'),
-    city: col('Postitoimipaikka'), email: col('Sähköposti'),
+    city: col('Postitoimipaikka'), email: col('Sähköposti'), ref: col('Viitenumero'),
     ha: col('Osittelukuvion pinta-ala (ha)'), mj: col('Maanarvojyvä'), kj: col('Kuivatusjyvä'),
     hvh: col('Hyöty vastaa haittaa'), corr: col('mha-korjaus'), fixed: col('Kiinteä osuus %'), pcorr: col('Osuuden korjaus %'),
     ver: col('Vahvistettu osuus %'), info: col('Lisätieto') };
@@ -332,7 +332,7 @@ function parseDrain(wb) {
     if (!t) {
       t = { row: i + 1, active: false, area, estate: estate === '-' ? '' : estate, estateName, name,
         recipient: str(v(r, C.rec)), addr: str(v(r, C.addr)), zip: zipFi(v(r, C.zip)), city: str(v(r, C.city)),
-        email: str(v(r, C.email)), mha: 0, pct: null, fixed: null, pcorr: null, info: str(v(r, C.info)), conflicts: [] };
+        email: str(v(r, C.email)), reference: str(v(r, C.ref)).replace(/\s/g, ''), mha: 0, pct: null, fixed: null, pcorr: null, info: str(v(r, C.info)), conflicts: [] };
       tilas.set(k, t); rows.push(t);
     }
     const act = yes(v(r, C.act));

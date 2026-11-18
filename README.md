@@ -14,7 +14,7 @@ Rekisterin **Tiekunta**-välilehti:
   Ositeltava summa, Yksikköhinta, Perusmaksu (€ / maksaja), Perusmaksun teksti, Ylläpitomaksun teksti,
   ALV %, Laskun lisäteksti, Vahvistettu. `{vuosi}` korvautuu laskutusvuodella.
 - Tieyksikköluettelo (yksi rivi per tienkäyttöyksikkö): Käytössä, Kiinteistö, Maksaja, Osoite,
-  Postinumero, Postitoimipaikka, Sähköposti, Tienkäyttöyksikkö, Liikennelaji,
+  Postinumero, Postitoimipaikka, Sähköposti, Viitenumero, Tienkäyttöyksikkö, Liikennelaji,
   Yksiköiden lkm, Painoluku, Matka (km), Matkan korjauskerroin, Painoluvun korjauskerroin,
   (Tieyksiköt, Osuus %, Osittelu € – tarkistuskaavat), Lisätieto.
 - Tieyksiköt = lkm × painoluku × matka × korjauskertoimet (tyhjä kerroin = 1). Ohjelma laskee tieyksiköt itse.
@@ -22,7 +22,10 @@ Rekisterin **Tiekunta**-välilehti:
 Laskutus:
 - Jokainen maksaja saa yhden laskun: perusmaksu kerran ja ylläpitomaksu kiinteistöittäin
   (osuus = kiinteistön tieyksiköt / kaikki tieyksiköt × ositeltava summa, pyöristys senteiksi).
-- Viitenumero muodostetaan aina laskunumerosta, joten pankkiviivakoodi tulostuu kaikille laskuille.
+- Viitenumero on osakkaan kiinteä viite, joka luetaan rekisterin **Viitenumero**-sarakkeesta (Excel-kaava
+  muodostaa sen osakastunnuksesta). Sama viite säilyy laskusta ja vuodesta toiseen, ja pankkiviivakoodi tulostuu sillä.
+- Lasku ohitetaan virheellisenä, jos maksajan viitenumero puuttuu, ei ole kelvollinen (4–20 numeroa) tai
+  saman maksajan riveillä on eri viitenumeroita.
 - Laskuttajaksi valitaan automaattisesti Laskuttajarekisterin laskuttaja, jonka Saaja on sama kuin tiekunnan nimi.
 - Laskun lisäteksti tulee rekisteristä ja sitä voi muokata ohjelmassa ennen muodostusta.
 
@@ -40,8 +43,10 @@ Yksi ojitusyhteisö per rekisteri. Rekisterin **Ojitusyhteisö**-välilehti:
 
 Laskutus: tilan osuus = alueen summa × **Vahvistettu osuus %** / 100. Ohjelma laskee osuuden myös kuvioista ja varoittaa,
 jos laskettu poikkeaa vahvistetusta. Jokainen maksaja saa yhden laskun kaikista tiloistaan ja alueistaan.
+Viitenumero luetaan maksajan riviltä rekisterin **Viitenumero**-sarakkeesta samoin säännöin kuin tiekunnalla.
 
 ### Laskurivit ja kertalasku
+- Tavallisen laskun ja itselaskutuksen viitenumero muodostetaan edelleen laskunumerosta.
 - Määrä ja hinta kirjoitetaan pilkulla (esim. 85,84). Negatiivinen summa (hyvitys) kirjoitetaan miinusmerkillä
   tai rivin ±-painikkeella, jota voi käyttää myös puhelimen numeronäppäimistöllä.
 - **Kertalaskun asiakas – ei rekisterissä**: asiakkaan tiedot kirjoitetaan suoraan laskulle eikä niitä tallenneta
